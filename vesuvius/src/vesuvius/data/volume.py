@@ -390,6 +390,43 @@ class Volume:
             return {'anon': self.anon}
         return None
 
+    def _multiscale_dataset_paths(self):
+        """OME-Zarr level paths, memoized. None when the group does not name them.
+
+        Remote HTTP stores have no LIST, so ``keys()`` and ``len()`` come back
+        empty even though ``.zattrs`` lists every level. Callers fall back to
+        listing only when this returns None.
+        """
+        cached = getattr(self, "_multiscale_paths", None)
+        if cached is not None:
+            return cached
+        if not isinstance(getattr(self, "data", None), zarr.Group):
+            return None
+        try:
+            attrs = dict(self.data.attrs)
+        except Exception:
+            return None
+        multiscales = attrs.get("multiscales")
+        if not isinstance(multiscales, list) or not multiscales:
+            return None
+        spec = multiscales[0]
+        if not isinstance(spec, dict):
+            return None
+        datasets = spec.get("datasets")
+        if not isinstance(datasets, list):
+            return None
+        paths = []
+        for item in datasets:
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path")
+            if path not in (None, ""):
+                paths.append(str(path))
+        if not paths:
+            return None
+        self._multiscale_paths = paths
+        return paths
+
     def _init_from_zarr_path(self):
         """Helper to initialize directly from a Zarr path."""
         # Log what we're doing if verbose
@@ -416,13 +453,15 @@ class Volume:
                 else:
                     self.dtype = self.data.dtype
             elif isinstance(self.data, zarr.Group):
-                # Group case (e.g., OME-Zarr with multiscales)
-                # Find the first array in the group - typically '0' for highest resolution
-                first_key = None
-                for key in self.data.keys():
-                    if isinstance(self.data[key], zarr.Array):
-                        first_key = key
-                        break
+                # Group case (e.g., OME-Zarr with multiscales). Prefer the
+                # paths named in .zattrs: an HTTP store cannot list members.
+                paths = self._multiscale_dataset_paths()
+                first_key = paths[0] if paths else None
+                if first_key is None:
+                    for key in self.data.keys():
+                        if isinstance(self.data[key], zarr.Array):
+                            first_key = key
+                            break
                 if first_key is None:
                     raise ValueError(f"No arrays found in zarr Group at {self.path}")
                 first_array = self.data[first_key]
@@ -487,8 +526,12 @@ class Volume:
             print(f"Number of Resolution Levels: 1")
             print(f"  Level 0 Shape: {self.data.shape}, Dtype: {self.data.dtype}")
         elif isinstance(self.data, zarr.Group):
-            levels = [key for key in sorted(self.data.keys(), key=lambda x: int(x) if x.isdigit() else x)
-                      if isinstance(self.data[key], zarr.Array)]
+            paths = self._multiscale_dataset_paths()
+            if paths is None:
+                levels = [key for key in sorted(self.data.keys(), key=lambda x: int(x) if x.isdigit() else x)
+                          if isinstance(self.data[key], zarr.Array)]
+            else:
+                levels = paths
             print(f"Number of Resolution Levels: {len(levels)}")
             for key in levels:
                 arr = self.data[key]
@@ -602,7 +645,9 @@ class Volume:
             return 1
         n = getattr(self, "_num_levels_memo", None)
         if n is None:
-            n = self._num_levels_memo = len(self.data)
+            paths = self._multiscale_dataset_paths()
+            n = len(paths) if paths is not None else len(self.data)
+            self._num_levels_memo = n
         return n
 
     def _level(self, idx: int = 0):
@@ -619,7 +664,8 @@ class Volume:
             return self.data
         if not isinstance(self.data, zarr.Group):
             return self.data[idx]
-        key = str(idx)
+        paths = self._multiscale_dataset_paths()
+        key = paths[idx] if paths is not None else str(idx)
         levels = getattr(self, "_level_memo", None)
         if levels is None:
             levels = self._level_memo = {}
