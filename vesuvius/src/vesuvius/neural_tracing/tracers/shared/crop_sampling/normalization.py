@@ -36,7 +36,7 @@ def prepare_normalization(out, specs, *, known=None):
     from the checkpoint's, or from the current CT array, is reported and replaced by the current one.
     """
     path = Path(out)/'ct_normalization.json'
-    document = json.loads(path.read_text()) if path.exists() else dict(method=ZSCORE_METHOD, volumes={})
+    document = json.loads(path.read_text(encoding="utf-8-sig")) if path.exists() else dict(method=ZSCORE_METHOD, volumes={})
     if document.get('method') != ZSCORE_METHOD:
         raise ValueError('Unsupported CT normalization policy')
     if known is not None and document['method'] != known['method']:
@@ -64,7 +64,7 @@ def prepare_normalization(out, specs, *, known=None):
             document['volumes'][key] = record
         spec.ct_normalization = dict(record)
         print(f'CT per-crop z-score, epsilon {ZSCORE_EPSILON:g}: {key}', flush=True)
-    if not path.exists() or json.loads(path.read_text()) != document:
+    if not path.exists() or json.loads(path.read_text(encoding="utf-8-sig")) != document:
         atomic_write(path, (json.dumps(document, indent=2)+'\n').encode())
     return document
 
