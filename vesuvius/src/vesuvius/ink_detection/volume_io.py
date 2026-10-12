@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -39,9 +41,15 @@ def _cache_snapshot(cache_dir: Path) -> list[tuple[int, int, Path]]:
 
 def _evict_to_watermark(
     snapshot: list[tuple[int, int, Path]], max_bytes: int
-) -> int:
+) -> list[tuple[int, int, Path]]:
+    """Drop oldest entries until the snapshot is at or under 90% of the budget.
+
+    The returned entries stay oldest-mtime-first so they can be registered in
+    that order.
+    """
     total = sum(size for _, size, _ in snapshot)
     target_bytes = 0.9 * max_bytes
+    evicted = 0
     for _, size, path in snapshot:
         if total <= target_bytes:
             break
@@ -50,7 +58,54 @@ def _evict_to_watermark(
         except FileNotFoundError:
             pass
         total -= size
-    return total
+        evicted += 1
+    return snapshot[evicted:]
+
+
+def _seed_cache_store_lru(
+    store: Any, cache_path: Path, snapshot: list[tuple[int, int, Path]]
+) -> bool:
+    """Count files already on disk in a CacheStore that starts with an empty LRU.
+
+    CacheStore never scans its cache directory. A new process therefore treats
+    a full directory as empty and writes another ``max_size`` on top of it.
+    Hits on those inherited files also skip LRU updates, because the key was
+    never tracked. Registering the retained files, oldest first, makes
+    ``max_size`` a bound on the directory and lets a later read promote an
+    inherited chunk.
+
+    Shrinking ``max_size`` to the leftover headroom is the wrong repair. The
+    sweep keeps 90% of the budget, so the warm process would be allowed only
+    the remaining 10%. A ``max_size`` smaller than one value also writes the
+    value and then refuses to track it, which disables eviction.
+
+    zarr has no public way to pre-load this ledger (``cache_info`` is
+    read-only). The seed writes ``CacheStore._state`` and returns False when
+    that shape is missing, so a newer zarr degrades to today's sweep instead
+    of pretending the budget is enforced.
+    """
+    state = getattr(store, "_state", None)
+    required = ("cache_order", "key_sizes", "key_insert_times", "current_size")
+    if state is None or not all(hasattr(state, name) for name in required):
+        return False
+    monotonic_now = time.monotonic()
+    wall_now = time.time()
+    total = 0
+    for mtime_ns, size, path in snapshot:
+        try:
+            key = path.relative_to(cache_path).as_posix()
+        except ValueError:
+            continue
+        state.cache_order[key] = None
+        state.key_sizes[key] = size
+        # Finite max_age_seconds measures age from monotonic insert time.
+        # The default is "infinity", so this stamp is unused in the normal path.
+        state.key_insert_times[key] = monotonic_now - max(
+            0.0, wall_now - mtime_ns / 1e9
+        )
+        total += size
+    state.current_size = total
+    return True
 
 
 def load_volume_auth(auth_json_path: str | Path | None) -> tuple[str, str] | None:
@@ -121,10 +176,13 @@ def open_volume_root(
             raise ValueError("cache_max_gb must be nonnegative or None")
         cache_path = disk_cache_subdir(path_text, Path(cache_dir))
         cache_path.mkdir(parents=True, exist_ok=True)
+        retained: list[tuple[int, int, Path]] = []
         if maximum_bytes is not None:
             snapshot = _cache_snapshot(cache_path)
             if sum(size for _, size, _ in snapshot) > maximum_bytes:
-                _evict_to_watermark(snapshot, maximum_bytes)
+                retained = _evict_to_watermark(snapshot, maximum_bytes)
+            else:
+                retained = snapshot
         if is_remote:
             remote_options = dict(storage_options)
             remote_options["skip_instance_cache"] = True
@@ -140,6 +198,19 @@ def open_volume_root(
             cache_store=LocalStore(cache_path),
             max_size=maximum_bytes,
         )
+        # zarr.open reads metadata through this store. Those writes have to
+        # count against the bytes already on disk, so the seed happens first.
+        if maximum_bytes is not None and not _seed_cache_store_lru(
+            store, cache_path, retained
+        ):
+            warnings.warn(
+                "installed zarr CacheStore exposes no LRU state to seed "
+                f"(zarr {zarr.__version__}); the volume cache budget of "
+                f"{maximum_bytes} bytes is enforced only by the open-time "
+                "sweep, so this process may grow the cache directory past it",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         return zarr.open(store=store, mode="r")
 
     if is_remote and ZARR_V3:
