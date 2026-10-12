@@ -115,7 +115,7 @@ def load_patch_cache(
         return None
 
     try:
-        with cache_file.open("r") as fh:
+        with cache_file.open("r", encoding="utf-8-sig") as fh:
             payload = json.load(fh)
     except (json.JSONDecodeError, OSError):
         return None
