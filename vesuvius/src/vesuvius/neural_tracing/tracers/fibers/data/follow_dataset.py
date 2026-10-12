@@ -129,7 +129,7 @@ class FollowDataset(torch.utils.data.IterableDataset):
     def refresh_replay(self):
         if self.replay_index is None or not os.path.exists(self.replay_index):
             return
-        with open(self.replay_index) as fh:
+        with open(self.replay_index, encoding="utf-8-sig") as fh:
             paths = json.load(fh)
         if paths != self._replay_paths:
             self._set_replay(load_replay(paths))
