@@ -417,7 +417,7 @@ def rasterize_patches(names, patches_dir, band, cfg, device, scratch):
         "band": [band.z_lo, band.z_hi], "patches": len(names),
     }
     if grid_path.exists() and vertex_path.exists() and stamp_path.exists():
-        if json.loads(stamp_path.read_text()) == stamp:
+        if json.loads(stamp_path.read_text(encoding="utf-8-sig")) == stamp:
             grid = torch.from_numpy(
                 np.memmap(
                     grid_path, dtype=np.int32, mode="r", shape=shape).copy()
