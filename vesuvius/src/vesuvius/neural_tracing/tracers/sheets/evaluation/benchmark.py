@@ -235,7 +235,7 @@ def _read_xyz(path: Path) -> np.ndarray:
 def rescore(folder: Path, tolerance: float = C.LossConfig.sheet_tolerance) -> None:
     """Switch counts of an existing benchmark folder from its tifxyz (kept points are the written ones), added to
     its report.json; checks that the recomputed ``first_switch`` matches the stored one."""
-    report = json.loads((folder/'report.json').read_text())
+    report = json.loads((folder/'report.json').read_text(encoding="utf-8-sig"))
     if report.get('held_out_scoring'):
         raise ValueError(f'{folder}: --rescore does not support --held-out-scoring reports')
     steps = report['steps']
