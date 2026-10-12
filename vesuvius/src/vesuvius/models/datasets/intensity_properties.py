@@ -539,7 +539,7 @@ def load_intensity_props_formatted(file_path: Path, channel: int = 0) -> Optiona
         return None
     
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, 'r', encoding='utf-8-sig') as f:
             data = json.load(f)
         
         # Check for our cached wrapper format first
@@ -615,7 +615,7 @@ def load_intensity_properties(cache_dir: Path) -> Optional[Tuple[Dict[str, float
     
     if filename.exists():
         try:
-            with open(filename, 'r') as f:
+            with open(filename, 'r', encoding='utf-8-sig') as f:
                 data = json.load(f)
             
             intensity_properties = data.get('intensity_properties')
