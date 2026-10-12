@@ -110,7 +110,7 @@ def main(argv=None):
         p, n, r = patch_nodes(info)
         pos.append(p), nrm.append(n), rc.append(r), patch.append(np.full(len(p), i, np.int32))
     pos, nrm, rc, patch = (np.concatenate(a) for a in (pos, nrm, rc, patch))
-    cp = sorted(json.loads(Path(args.umbilicus).read_text())['control_points'], key=lambda c: c['z'])
+    cp = sorted(json.loads(Path(args.umbilicus).read_text(encoding="utf-8-sig"))['control_points'], key=lambda c: c['z'])
     zs = np.array([c['z'] for c in cp], np.float64)
     axis_xy = np.stack([np.interp(pos[:, 2], zs, [c[k] for c in cp]) for k in 'xy'], 1)
     radial = pos[:, :2]-axis_xy
@@ -130,7 +130,7 @@ def main(argv=None):
     _STATE['fibers'] = fibers
     jobs = list(chosen)
     for path in sorted(Path(args.fiber_jsons).glob('*.json')) if args.fiber_jsons else []:
-        fiber = json.loads(path.read_text())
+        fiber = json.loads(path.read_text(encoding="utf-8-sig"))
         if fiber_tag(fiber) == args.family:  # VC3D fiber annotations: id 'json:<file stem>'
             jobs.append((f'json:{path.stem}', np.asarray(fiber['line_points'], np.float64)/args.grid_scale))
     print(f'{len(jobs)-len(chosen)} {args.family} fibers from {args.fiber_jsons}', flush=True)
