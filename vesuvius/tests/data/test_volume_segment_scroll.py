@@ -6,6 +6,7 @@ scroll_id. Init then looks up energy by scroll None.
 
 from __future__ import annotations
 
+import builtins
 from pathlib import Path
 
 import pytest
@@ -135,3 +136,31 @@ def test_missing_config_is_file_not_found(tmp_path):
     volume = _volume_with_config(tmp_path / "missing.yaml")
     with pytest.raises(FileNotFoundError, match="Configuration file not found"):
         volume._infer_scroll_from_segment(111)
+
+
+def test_inference_keeps_non_ascii_segment_id_under_legacy_locale(tmp_path, monkeypatch):
+    config = tmp_path / "scrolls.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                '"1":',
+                '  "54":',
+                '    "7.91":',
+                "      segments:",
+                '        "café": "http://example.invalid/segment.zarr"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    real_open = builtins.open
+
+    def open_text_as_cp1252(file, mode="r", *args, **kwargs):
+        if isinstance(mode, str) and "b" not in mode and "encoding" not in kwargs:
+            kwargs = dict(kwargs)
+            kwargs["encoding"] = "cp1252"
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", open_text_as_cp1252)
+    volume = _volume_with_config(config)
+    assert volume._infer_scroll_from_segment("café") == ("1", 54, 7.91)

@@ -577,7 +577,7 @@ class Volume:
                 f"Configuration file not found at {self.configs}. "
             )
 
-        with open(self.configs, "r") as file:
+        with open(self.configs, "r", encoding="utf-8") as file:
             config_data = yaml.safe_load(file)
 
         if not isinstance(config_data, dict) or not config_data:
