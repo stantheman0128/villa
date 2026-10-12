@@ -50,7 +50,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     fibers = []  # (key, family, points, tangents)
     for path in sorted(Path(args.fiber_jsons).glob('*.json')) if args.fiber_jsons else []:
-        fiber = json.loads(path.read_text())
+        fiber = json.loads(path.read_text(encoding="utf-8-sig"))
         tag = fiber_tag(fiber)
         if tag in FAMILY and len(fiber.get('line_points') or []) > 1:
             fibers.append((f'json:{path.stem}', FAMILY[tag],
