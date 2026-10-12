@@ -182,7 +182,7 @@ def snap_afv(source, destination, presence, scale, offset, cfg, device, output_s
 
 def snap_json(paths, destination, presence, scale, offset, cfg, device, output_step, provenance):
     destination.mkdir(parents=True, exist_ok=False)
-    documents = [json.loads(p.read_text()) for p in paths]
+    documents = [json.loads(p.read_text(encoding="utf-8-sig")) for p in paths]
     lines = [np.asarray(d['line_points'], np.float64) for d in documents]
     snapped = snap_native(lines, presence, scale, offset, cfg, device, output_step)
     for path, document, line, new in zip(paths, documents, lines, snapped):
