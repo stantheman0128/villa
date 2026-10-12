@@ -915,6 +915,27 @@ void publishSegmentDirectory(const std::filesystem::path& tempDir,
     std::filesystem::remove_all(backupDir, ec);
 }
 
+// True when any corner of a [[lo], [hi]] bbox is exactly the tifxyz
+// missing-point marker. That box was measured over the raw grid with the
+// marker included (villa #1618), so it is not the surface extent.
+bool bboxCarriesMissingMarker(const nlohmann::json& bbox)
+{
+    if (!bbox.is_array()) {
+        return false;
+    }
+    for (const auto& corner : bbox) {
+        if (!corner.is_array()) {
+            continue;
+        }
+        for (const auto& value : corner) {
+            if (value.is_number() && value.get<double>() == -1.0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 nlohmann::json placeholderMetadata(
     const OpenDataSample& sample,
     const OpenDataSegment& segment,
@@ -934,7 +955,18 @@ nlohmann::json placeholderMetadata(
             }
         }
     }
-    if (segment.properties.is_object()) {
+    // volume_coverage[*].bbox_transformed is the stored bbox pushed through
+    // the downscale or the volume transform (villa #1734). When the stored
+    // box carries the marker, the derived corner is -4 on the segment's own
+    // volume and some other number elsewhere. QuadSurface::bbox() recomputes
+    // from the points only when low[0] is exactly -1, so it would trust those
+    // derived boxes. Leave the key out. With no stored bbox the extent is
+    // measured from the valid points once the surface is loaded.
+    const bool storedBboxCarriesMarker =
+        bboxCarriesMissingMarker(meta.value("bbox", nlohmann::json()));
+    if (storedBboxCarriesMarker) {
+        meta.erase("bbox");
+    } else if (segment.properties.is_object()) {
         const auto coverage = segment.properties.find("volume_coverage");
         if (coverage != segment.properties.end() && coverage->is_object()) {
             const auto target = coverage->find(coordinateVolumeId);
