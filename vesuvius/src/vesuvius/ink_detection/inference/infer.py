@@ -518,7 +518,23 @@ class FlatBlockDataset(Dataset):
         # maps an all-zero patch to nonzero values.
         nonempty = int(patch_HWZ.any())
         patch_ZYX = np.moveaxis(patch_HWZ, -1, 0)
-        patch_ZYX = normalize_flat_patch(patch_ZYX, self.preprocessing)
+        if self.preprocessing == "tifxyz_robust":
+            # Reader padding is already zero. Robust statistics have to see
+            # only the source-backed region, matching training, or the
+            # artificial zeros shift every real voxel (villa #1481).
+            depth_start = self.reader.output_depth_start
+            depth_stop = depth_start + int(self.reader.layer_indices.size)
+            patch_ZYX = np.ascontiguousarray(patch_ZYX, dtype=np.float32)
+            valid = (
+                slice(depth_start, depth_stop),
+                slice(0, block.valid_h),
+                slice(0, block.valid_w),
+            )
+            patch_ZYX[valid] = normalize_flat_patch(
+                patch_ZYX[valid], self.preprocessing
+            )
+        else:
+            patch_ZYX = normalize_flat_patch(patch_ZYX, self.preprocessing)
         image_CZYX = torch.from_numpy(patch_ZYX).unsqueeze(0)
         metadata = torch.tensor(
             [block.y0, block.x0, block.valid_h, block.valid_w, nonempty],

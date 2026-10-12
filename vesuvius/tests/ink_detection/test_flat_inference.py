@@ -16,7 +16,9 @@ import zarr
 
 from vesuvius.ink_detection.config import InkConfig, NormalizationConfig
 from vesuvius.ink_detection.inference.infer import (
+    Block,
     ChunkAccumulator,
+    FlatBlockDataset,
     FlatPatchReader,
     choose_pyramid_array,
     compute_chunk_contribution_counts,
@@ -495,3 +497,74 @@ def test_flat_inference_ignores_embedded_io_paths_and_keeps_reference_defaults(
     assert "stride=8 requested_overlap=0.500 blend_mode=hann" in caplog.text
     assert np.all(tifffile.imread(output) == 127)
     assert not any(path.name.startswith("ink_flat_infer_") for path in tmp_path.iterdir())
+
+
+def _robust_flat_patch(reader, *, patch_size, valid_h, valid_w):
+    dataset = FlatBlockDataset(
+        reader=reader,
+        blocks=(Block(0, 0, valid_h, valid_w),),
+        patch_size=patch_size,
+        preprocessing="tifxyz_robust",
+    )
+    image, _metadata = dataset[0]
+    return image.numpy()[0]
+
+
+def test_robust_flat_normalization_ignores_reader_padding(tmp_path):
+    """Zero padding must not enter robust statistics.
+
+    Training normalizes only the voxels read from the source and leaves
+    padding at zero. Flat inference used to pad first, so the artificial
+    zeros shifted the median and MAD of every real voxel (villa #1481).
+    """
+
+    source = np.arange(100, 148, dtype=np.uint8).reshape(3, 4, 4)
+    path = tmp_path / "short.zarr"
+    array = zarr.open(
+        path,
+        mode="w",
+        shape=(3, 4, 4),
+        chunks=(3, 4, 4),
+        dtype="u1",
+        zarr_format=2,
+    )
+    array[:] = source
+    real = normalize_flat_patch(source.astype(np.float32), "tifxyz_robust")
+
+    depth_reader = FlatPatchReader(
+        input_path=path,
+        resolution="0",
+        depth_axis_first=True,
+        height=4,
+        width=4,
+        layer_indices=np.arange(3, dtype=np.int64),
+        output_depth=5,
+        preprocessing="tifxyz_robust",
+    )
+    depth_patch = _robust_flat_patch(
+        depth_reader, patch_size=4, valid_h=4, valid_w=4
+    )
+    expected_depth = np.zeros((5, 4, 4), dtype=np.float32)
+    expected_depth[1:4] = real
+    np.testing.assert_allclose(depth_patch, expected_depth, atol=1e-5)
+    assert depth_patch[0].max() == 0
+    assert depth_patch[4].max() == 0
+
+    spatial_reader = FlatPatchReader(
+        input_path=path,
+        resolution="0",
+        depth_axis_first=True,
+        height=4,
+        width=4,
+        layer_indices=np.arange(3, dtype=np.int64),
+        output_depth=3,
+        preprocessing="tifxyz_robust",
+    )
+    spatial_patch = _robust_flat_patch(
+        spatial_reader, patch_size=6, valid_h=4, valid_w=4
+    )
+    expected_spatial = np.zeros((3, 6, 6), dtype=np.float32)
+    expected_spatial[:, :4, :4] = real
+    np.testing.assert_allclose(spatial_patch, expected_spatial, atol=1e-5)
+    assert spatial_patch[:, 4:, :].max() == 0
+    assert spatial_patch[:, :, 4:].max() == 0
