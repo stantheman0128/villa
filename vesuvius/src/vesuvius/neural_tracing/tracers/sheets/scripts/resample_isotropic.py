@@ -45,7 +45,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     src, out = Path(args.src), Path(args.out)
     for patch in sorted(p for p in src.iterdir() if (p/'x.tif').is_file()):
-        meta = json.loads((patch/'meta.json').read_text())
+        meta = json.loads((patch/'meta.json').read_text(encoding="utf-8-sig"))
         xyz = np.stack([np.asarray(tifffile.imread(patch/f'{c}.tif'), np.float32) for c in 'xyz'], -1)
         ok = np.all(xyz != -1, -1) & np.all(np.isfinite(xyz), -1)
         row, col = steps(xyz, ok)
