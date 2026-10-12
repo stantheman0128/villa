@@ -26,11 +26,11 @@ class FiberPool:
         self.points, self.tangent, self.arc = load('points'), load('tangent'), load('arc')
         self.instance, self.family = load('instance'), load('family')
         self.cell_keys, self.cell_starts = np.asarray(load('cell_keys')), np.asarray(load('cell_starts'))
-        self.keys = json.loads((path/'keys.json').read_text())
+        self.keys = json.loads((path/'keys.json').read_text(encoding='utf-8-sig'))
         self.index = {key: i for i, key in enumerate(self.keys)}
         aliases = path/'aliases.json'  # fibers left out as duplicates -> the instance standing for them
         if aliases.is_file():
-            self.index.update({a: self.index[k] for a, k in json.loads(aliases.read_text()).items() if k in self.index})
+            self.index.update({a: self.index[k] for a, k in json.loads(aliases.read_text(encoding='utf-8-sig')).items() if k in self.index})
 
     def region(self, lo, hi) -> np.ndarray:
         """Indices of the pool points within the level-0 box [lo, hi] (xyz)."""
