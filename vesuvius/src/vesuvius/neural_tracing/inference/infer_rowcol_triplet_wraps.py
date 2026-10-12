@@ -192,7 +192,7 @@ def _read_tifxyz_scale_from_meta(tifxyz_path):
         raise RuntimeError(
             f"Unable to resolve stored tifxyz density scale: missing meta.json at {meta_path}"
         )
-    with open(meta_path, "rt") as meta_fp:
+    with open(meta_path, "rt", encoding="utf-8-sig") as meta_fp:
         meta = json.load(meta_fp)
     return _normalize_scale_rc(meta.get("scale"), source_label=str(meta_path))
 
@@ -209,7 +209,7 @@ def _read_volume_voxel_size_um(volume_path):
     meta_path = os.path.join(str(volume_path), "meta.json")
     if not os.path.exists(meta_path):
         return None
-    with open(meta_path, "rt") as meta_fp:
+    with open(meta_path, "rt", encoding="utf-8-sig") as meta_fp:
         return json.load(meta_fp).get("voxelsize", None)
 
 
