@@ -58,14 +58,22 @@ def _is_transient_read_error(exc: BaseException) -> bool:
     return False
 
 
+def _load_yaml_utf8(path):
+    """Load YAML as UTF-8.
+
+    open() without an encoding uses the locale codec. On a legacy code page
+    that corrupts non-ASCII paths and names before PyYAML parses them.
+    """
+    with open(path, "r", encoding="utf-8") as file:
+        return yaml.safe_load(file)
+
+
 # Define the functions needed here to avoid circular imports
 def list_files():
     """Load and return the scrolls configuration data from a YAML file."""
     install_path = get_installation_path()
     scroll_config = os.path.join(install_path, 'vesuvius', 'install', 'configs', 'scrolls.yaml')
-    with open(scroll_config, 'r') as file:
-        data = yaml.safe_load(file)
-    return data
+    return _load_yaml_utf8(scroll_config)
 
 
 def is_aws_ec2_instance():
@@ -555,8 +563,7 @@ class Volume:
             raise FileNotFoundError(error_msg)
 
         try:
-            with open(self.configs, 'r') as file:
-                config_data: Dict = yaml.safe_load(file)
+            config_data: Dict = _load_yaml_utf8(self.configs)
 
             if not config_data:
                 raise ValueError(f"Config file {self.configs} is empty or invalid YAML.")
@@ -1260,8 +1267,7 @@ class Cube:
             If the URLs cannot be found in the configuration.
         """
         # Load the YAML file
-        with open(self.configs, 'r') as file:
-            data: Dict[str, Any] = yaml.safe_load(file)
+        data: Dict[str, Any] = _load_yaml_utf8(self.configs)
         
         # Retrieve the URL for the given id, energy, and resolution
         base_url: str = data.get(self.scroll_id, {}).get(self.energy, {}).get(self.resolution, {}).get(f"{self.z:05d}_{self.y:05d}_{self.x:05d}")
