@@ -77,7 +77,7 @@ class EpisodeSampler:
         self.reach_rows = slice(self.seed_rows[0], u_end+1)
         self.hard = []  # failure spots to start training episodes at (data.hard_windows)
         if split == 'train' and data.hard_fraction:
-            self.hard = json.loads(Path(data.hard_windows).read_text())['records']
+            self.hard = json.loads(Path(data.hard_windows).read_text(encoding="utf-8-sig"))['records']
         # Matched fiber stretches (data.fiber_runs) long enough for this sampler: as long as the front for
         # fiber-seeded episodes, as long as the whole GT window's advance for fiber-following ones. Training episodes
         # and benchmark seeds (region_split, trace_benchmark.py --fiber-seeds) use them; validation stays on GT rows.
