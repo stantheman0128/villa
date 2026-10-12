@@ -201,7 +201,7 @@ class OnPolicyStates:
                 metadata["archive"] = [stat.st_size, stat.st_mtime_ns]
                 existing = None
                 if os.path.exists(metadata_path):
-                    with open(metadata_path) as fh:
+                    with open(metadata_path, encoding="utf-8-sig") as fh:
                         existing = json.load(fh)
                 if existing != metadata or any(not os.path.exists(os.path.join(d, k + ".npy")) for k in names):
                     os.makedirs(d, exist_ok=True)
@@ -214,7 +214,7 @@ class OnPolicyStates:
         return obj
 
     def _open(self, d):
-        with open(os.path.join(d, "metadata.json")) as fh:
+        with open(os.path.join(d, "metadata.json"), encoding="utf-8-sig") as fh:
             metadata = json.load(fh)
         self.manifest = metadata["fibers"]
         self.provenance = metadata["provenance"]
