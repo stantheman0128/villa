@@ -406,7 +406,7 @@ class TifxyzReader:
         if not meta_path.exists():
             raise FileNotFoundError(f"Metadata file not found: {meta_path}")
 
-        with open(meta_path, "r") as f:
+        with open(meta_path, "r", encoding="utf-8-sig") as f:
             meta_dict = json.load(f)
 
         # Parse scale - C++ stores as [x_scale, y_scale], we use (scale_y, scale_x)
