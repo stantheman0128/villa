@@ -12,7 +12,7 @@ from vesuvius.ink_detection.config import InkDataConfig
 from vesuvius.ink_detection.types import Patch, Segment
 
 
-_CACHE_VERSION = "v6"
+_CACHE_VERSION = "v7"
 
 
 def label_asset_fingerprint(paths: Iterable[Path | str | None]) -> str:
@@ -76,7 +76,7 @@ def _segment_label_fingerprint(segment: Segment) -> str:
 
 
 def patch_finding_cache_token(config: InkDataConfig) -> str:
-    """Return the v6 token including every patch-semantic input."""
+    """Return the v7 token including every patch-semantic input."""
     finding = config.patch_finding
     patch_y = config.patch_size[1]
     default_stride = int(patch_y * finding.overlap)

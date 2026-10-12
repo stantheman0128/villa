@@ -31,6 +31,7 @@ from vesuvius.ink_detection.data.geometry import (
 )
 from vesuvius.ink_detection.data.normalization import (
     exclude_validation_voxels,
+    isolate_excluded_labels,
     normalize_image,
 )
 from vesuvius.ink_detection.data.patch_cache import (
@@ -388,6 +389,17 @@ class InkDataset(Dataset):
             y1=support_y1,
             x0=support_x0,
             x1=support_x1,
+        )
+        scoped_override = (
+            patch.supervision_mask_override is not None
+            and str(patch.supervision_mask_override)
+            != str(patch.segment.supervision_mask)
+        )
+        support_labels = isolate_excluded_labels(
+            support_labels,
+            supervision=support_supervision,
+            validation=support_validation if validation_volume is not None else None,
+            restrict_to_supervision=bool(patch.is_validation or scoped_override),
         )
         (
             support_bbox,

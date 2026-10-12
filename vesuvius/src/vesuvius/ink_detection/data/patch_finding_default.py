@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 import numpy as np
 
+from vesuvius.ink_detection.data.normalization import isolate_excluded_labels
 from vesuvius.ink_detection.types import Patch, Segment
 
 
@@ -122,7 +123,10 @@ def find_segment_patches(
             has_validation = bool(validation_patch.size and np.any(validation_patch))
             if has_training and has_validation:
                 has_training = bool(
-                    np.any(np.asarray(supervision_patch) & ~np.asarray(validation_patch))
+                    np.any(
+                        (np.asarray(supervision_patch) > 0)
+                        & ~(np.asarray(validation_patch) > 0)
+                    )
                 )
         y0 = int(round(y_scan * scale_y))
         x0 = int(round(x_scan * scale_x))
@@ -139,6 +143,12 @@ def find_segment_patches(
         label_patch = inklabels[
             mask_surface, y_scan : y_scan + scan_h, x_scan : x_scan + scan_w
         ]
+        label_patch = isolate_excluded_labels(
+            label_patch,
+            supervision=supervision_patch,
+            validation=validation_patch if validation is not None else None,
+            restrict_to_supervision=False,
+        )
         if has_training and labeled_patch_coverage(label_patch) >= (
             segment.data_config.patch_finding.min_labeled_coverage
         ):

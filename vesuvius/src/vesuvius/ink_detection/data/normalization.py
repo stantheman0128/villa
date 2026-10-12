@@ -78,3 +78,23 @@ def exclude_validation_voxels(
     masked = np.array(supervision, copy=True)
     masked[validation > 0] = 0
     return masked
+
+
+def isolate_excluded_labels(
+    labels: np.ndarray,
+    *,
+    supervision: np.ndarray,
+    validation: np.ndarray | None,
+    restrict_to_supervision: bool,
+) -> np.ndarray:
+    """Drop ink that belongs to the other split before it becomes a target.
+
+    Native projection turns a positive ink label into a supervised voxel
+    even where the flat supervision mask was already cleared. Explicit
+    exclusions have to be removed from the labels themselves.
+    """
+    if restrict_to_supervision:
+        return np.where(np.asarray(supervision) > 0, labels, 0)
+    if validation is None:
+        return labels
+    return exclude_validation_voxels(labels, validation)

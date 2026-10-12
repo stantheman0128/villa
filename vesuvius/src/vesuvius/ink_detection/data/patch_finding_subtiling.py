@@ -6,6 +6,8 @@ from collections.abc import Callable
 
 import numpy as np
 
+from vesuvius.ink_detection.data.normalization import isolate_excluded_labels
+from vesuvius.ink_detection.data.patch_finding_default import labeled_patch_coverage
 from vesuvius.ink_detection.types import Patch, Segment
 
 
@@ -154,7 +156,10 @@ def find_segment_patches(
             has_validation = bool(validation_patch.size and np.any(validation_patch))
             if has_training and has_validation:
                 has_training = bool(
-                    np.any(np.asarray(supervision_patch) & ~np.asarray(validation_patch))
+                    np.any(
+                        (np.asarray(supervision_patch) > 0)
+                        & ~(np.asarray(validation_patch) > 0)
+                    )
                 )
         if has_validation:
             held_out.append(
@@ -170,13 +175,13 @@ def find_segment_patches(
             int(y1) : int(y1) + patch_size[1],
             int(x1) : int(x1) + patch_size[2],
         ]
-        labeled_y, labeled_x = np.nonzero(label_patch)
-        coverage = 0.0
-        if labeled_y.size:
-            coverage = float(
-                (int(labeled_y.max()) - int(labeled_y.min()) + 1)
-                * (int(labeled_x.max()) - int(labeled_x.min()) + 1)
-            ) / float(label_patch.size)
+        label_patch = isolate_excluded_labels(
+            label_patch,
+            supervision=supervision_patch,
+            validation=validation_patch if validation is not None else None,
+            restrict_to_supervision=False,
+        )
+        coverage = labeled_patch_coverage(label_patch)
         if has_training and coverage >= finding.min_labeled_coverage:
             training.append(Patch(segment=segment, bbox=bbox))
     if not training and not held_out:
