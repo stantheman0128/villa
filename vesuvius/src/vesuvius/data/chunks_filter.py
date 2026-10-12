@@ -60,7 +60,7 @@ def load_chunks_json(zarr_path: str) -> Optional[Dict]:
     # Handle local paths
     if not zarr_path.startswith(('s3://', 'http://', 'https://')):
         try:
-            with open(chunks_json_path, 'r') as f:
+            with open(chunks_json_path, 'r', encoding='utf-8-sig') as f:
                 data = json.load(f)
             if 'chunks_by_level' not in data:
                 print(f"Warning: chunks.json missing 'chunks_by_level' key, ignoring")
@@ -80,7 +80,7 @@ def load_chunks_json(zarr_path: str) -> Optional[Dict]:
             fs = fsspec.filesystem('s3', anon=False)
             if not fs.exists(chunks_json_path):
                 return None
-            with fs.open(chunks_json_path, 'r') as f:
+            with fs.open(chunks_json_path, 'r', encoding='utf-8-sig') as f:
                 data = json.load(f)
             if 'chunks_by_level' not in data:
                 print(f"Warning: chunks.json missing 'chunks_by_level' key, ignoring")
