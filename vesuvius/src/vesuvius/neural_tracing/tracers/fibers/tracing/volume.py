@@ -872,7 +872,7 @@ def main(argv=None):
                   checkpoint_sha256=file_sha256(tracer.checkpoint_path))
     run_json = out/'run.json'
     if run_json.exists():
-        old = json.loads(run_json.read_text())
+        old = json.loads(run_json.read_text(encoding="utf-8-sig"))
         # settings that only change speed or reporting may differ on resume
         speed_only = ('device', 'status_every', 'rows', 'min_feed', 'open_tiles', 'max_open', 'forward_chunk', 'gpu_chunks',
                       'axis_workers', 'tile_workers', 'tile_ahead', 'afv', 'afv_template',  # speed or the end-of-run export
