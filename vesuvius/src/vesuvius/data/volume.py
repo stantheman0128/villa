@@ -173,7 +173,8 @@ class Volume:
         type : Union[str, int]
             Volume type or identifier ('scroll', 'segment', 'zarr', scroll name, segment timestamp).
         scroll_id : Optional[Union[int, str]]
-            Scroll ID (required if type is 'scroll' or 'segment' and not implicitly defined by 'type').
+            Scroll ID. Required for a scroll unless the type string names it.
+            For a segment, an omitted scroll id is read from scrolls.yaml.
         energy : Optional[int]
             Energy level. Uses canonical if None.
         resolution : Optional[float]
@@ -329,6 +330,18 @@ class Volume:
                 print(
                     f"Warning: Could not find config file at expected locations: {possible_paths}. Will try default: {self.configs}")
                 # Error will be raised in get_url_from_yaml if file truly doesn't exist
+
+            # The documented call passes only segment_id. scrolls.yaml already
+            # records which scroll that segment belongs to.
+            if self.type == "segment" and self.scroll_id is None:
+                inferred_scroll, inferred_energy, inferred_resolution = (
+                    self._infer_scroll_from_segment(self.segment_id)
+                )
+                self.scroll_id = inferred_scroll
+                if energy is None:
+                    energy = inferred_energy
+                if resolution is None:
+                    resolution = inferred_resolution
 
             # --- Energy & Resolution ---
             self.energy = energy if energy is not None else self.grab_canonical_energy()
@@ -540,6 +553,59 @@ class Volume:
                     stack.append((list(value.items()), path + [key]))
 
         return None, None, None, None
+
+    def _segment_lookup_keys(self, segment_id):
+        keys = []
+        for key in (segment_id, str(segment_id)):
+            if key not in keys:
+                keys.append(key)
+        text = str(segment_id)
+        if text.isdigit():
+            number = int(text)
+            if number not in keys:
+                keys.append(number)
+        return keys
+
+    def _infer_scroll_from_segment(self, segment_id):
+        """Return scroll id, energy, and resolution for a segment in scrolls.yaml.
+
+        Called only when type is segment and scroll_id was omitted. The caller
+        keeps an explicit energy or resolution instead of these values.
+        """
+        if not self.configs or not os.path.exists(self.configs):
+            raise FileNotFoundError(
+                f"Configuration file not found at {self.configs}. "
+            )
+
+        with open(self.configs, "r") as file:
+            config_data = yaml.safe_load(file)
+
+        if not isinstance(config_data, dict) or not config_data:
+            raise ValueError(
+                f"Config file {self.configs} is empty or invalid YAML."
+            )
+
+        segment_keys = self._segment_lookup_keys(segment_id)
+        for scroll_id, scroll_data in config_data.items():
+            if not isinstance(scroll_data, dict):
+                continue
+            for energy_key, energy_data in scroll_data.items():
+                if not isinstance(energy_data, dict):
+                    continue
+                for resolution_key, resolution_data in energy_data.items():
+                    if not isinstance(resolution_data, dict):
+                        continue
+                    segments = resolution_data.get("segments")
+                    if not isinstance(segments, dict):
+                        continue
+                    if not any(key in segments for key in segment_keys):
+                        continue
+                    return scroll_id, int(energy_key), float(resolution_key)
+
+        raise ValueError(
+            f"Segment {segment_id} was not found in {self.configs}. "
+            "Pass scroll_id explicitly if it lives elsewhere."
+        )
 
     def get_url_from_yaml(self) -> str:
         """Retrieves the data URL/path from the YAML config file."""
