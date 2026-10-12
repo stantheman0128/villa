@@ -186,7 +186,7 @@ def main(argv=None):
     length = (args.points-1)*d.point_spacing
     rng = np.random.default_rng(args.seed)
     files = sorted(args.fibers.glob('*.json'))
-    fibers = [(f, fiber) for f in files if fiber_tag(fiber := json.loads(f.read_text())) == args.tag]
+    fibers = [(f, fiber) for f in files if fiber_tag(fiber := json.loads(f.read_text(encoding="utf-8-sig"))) == args.tag]
     order = rng.permutation(len(fibers))
     shard, shards = (int(v) for v in args.shard.split('/'))
     order = order[shard::shards]
