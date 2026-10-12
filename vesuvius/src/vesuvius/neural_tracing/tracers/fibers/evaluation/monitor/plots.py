@@ -196,7 +196,7 @@ def plot_run_curves(out, model_type):
 
 def plot_curves(log_path, path, *, loss_key='flow'):
     recs = []
-    for line in Path(log_path).read_text().splitlines():
+    for line in Path(log_path).read_text(encoding="utf-8-sig").splitlines():
         row = json.loads(line)
         if row.get('event') == 'resume_configuration':
             # Appended logs retain interrupted work, but plots follow the resumed
