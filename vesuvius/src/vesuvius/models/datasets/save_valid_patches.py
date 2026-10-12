@@ -253,7 +253,7 @@ def load_cached_patches(train_data_paths: List,
 
     try:
         # Load cache file
-        with open(cache_file_path, 'r') as f:
+        with open(cache_file_path, 'r', encoding='utf-8-sig') as f:
             cache_data = json.load(f)
 
         # Validate cache metadata
@@ -363,7 +363,7 @@ def get_cache_info(train_data_paths: List,
     
     try:
         # Load cache file
-        with open(cache_file_path, 'r') as f:
+        with open(cache_file_path, 'r', encoding='utf-8-sig') as f:
             cache_data = json.load(f)
         
         return cache_data["metadata"]
