@@ -779,7 +779,7 @@ def run_scatter(archive, plan, blocks, band, cfg, device, scratch,
     for candidate in checkpoint_dirs:
         cursor = candidate / "cursor.json"
         if cursor.exists():
-            state = json.loads(cursor.read_text())
+            state = json.loads(cursor.read_text(encoding="utf-8-sig"))
             if newest is None or state["time"] > newest[0]:
                 newest = (state["time"], candidate, state["next_position"])
     if newest is not None:
