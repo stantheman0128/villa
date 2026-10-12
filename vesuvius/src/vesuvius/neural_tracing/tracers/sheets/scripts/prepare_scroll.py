@@ -211,7 +211,7 @@ def main(argv=None):
     ap.add_argument('--workers', type=int, default=32)
     args = ap.parse_args(argv)
 
-    meta = json.loads(Path(args.metadata).read_text())['samples'][args.scroll]
+    meta = json.loads(Path(args.metadata).read_text(encoding="utf-8-sig"))['samples'][args.scroll]
     vpath = meta['volumes'][args.volume_id]['data'][0]['origins'][0]['path'].rstrip('/')
     segs = sorted((g for g in meta['segments'].values()
                    if segment_path(g, 'tifxyz-transformed', args.volume_id)), key=lambda g: g['long_id'])
