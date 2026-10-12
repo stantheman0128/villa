@@ -60,7 +60,7 @@ def config_path(path):
 def read_config(path, overrides=None):
     """Config JSON with defaults; relative paths inside it resolve against the config file's directory."""
     path = config_path(path)
-    config = dict(DEFAULTS, **json.loads(path.read_text()))
+    config = dict(DEFAULTS, **json.loads(path.read_text(encoding='utf-8-sig')))
     config.update(overrides or {})
     for key in ('dataset_config', 'ct_normalization', 'out_root', 'init_checkpoint'):
         if config.get(key) and '://' not in str(config[key]):
