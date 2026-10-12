@@ -86,7 +86,7 @@ class EpisodeSampler:
         if (split == 'train' or region_split) and (data.fiber_fraction or self.follow):
             need = self.spec.u_vals[-1]-self.spec.u_vals[0] if self.follow else self.front_len
             keys = {(info.root, info.name) for info in self.index}
-            for line in Path(data.fiber_runs).read_text().splitlines():
+            for line in Path(data.fiber_runs).read_text(encoding="utf-8-sig").splitlines():
                 run = json.loads(line)
                 if (run['root'], run['patch']) in keys and run['end']-run['start'] >= need:
                     self.fiber_runs.append(dict(fiber=run['fiber'], root=run['root'], patch=run['patch'],
