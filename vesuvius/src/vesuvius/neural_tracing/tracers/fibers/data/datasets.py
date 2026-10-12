@@ -40,7 +40,7 @@ def primary_source_spec(document):
 
 def read_dataset_config(path):
     path = Path(path).resolve()
-    return parse_dataset_config(json.loads(path.read_text()), path.parent)
+    return parse_dataset_config(json.loads(path.read_text(encoding="utf-8-sig")), path.parent)
 
 
 def parse_dataset_config(document, base):
@@ -196,7 +196,7 @@ def build_mixed_dataset(primary, document, cfg, sample, sampling, args, *, seed,
             scale = float(source['grid_scale'])
             builder = IdentityObservationBuilder(cfg, fibers, sampling, augment=True, neighbors=AFVBank(fibers))
             replay_index = Path(out)/'dagger'/source['name']/'replay.json' if out else None
-            replay_paths = (own_replay_paths(json.loads(replay_index.read_text()), Path(out)/'dagger')
+            replay_paths = (own_replay_paths(json.loads(replay_index.read_text(encoding="utf-8-sig")), Path(out)/'dagger')
                             if resume and replay_index and replay_index.exists() else [])
             replay = usable_replay(load_replay(replay_paths), fibers, sample.n_history, spec.grid_scale)
             dataset = FollowDataset(fibers, spec, sample, chunk=loader_chunk(cfg, args.batch),
