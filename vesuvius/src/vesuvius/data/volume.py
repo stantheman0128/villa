@@ -976,11 +976,16 @@ class Volume:
                 if self.verbose: print(f"  Cast {original_dtype} to np.float32 for normalization.")
 
         # 2. Apply Normalization Scheme
-        # Handle potential channel dimension (assume channels are dim 0 if present)
-        # Add temporary channel dim for 3D data (Z, Y, X) -> (1, Z, Y, X) for consistent logic
+        # Schemes that index data_slice[c] need a channel axis. Reads of
+        # ndim <= 3 do not have one. Inserting it only for ndim == 3 left a
+        # 2D read normalizing each row on its own, and a 1D read normalizing
+        # each voxel against itself (all zeros).
         original_ndim = data_slice.ndim
-        has_channel_dim = original_ndim > 3  # Heuristic: assume >3D means channels exist at dim 0
-        if not has_channel_dim and original_ndim == 3:  # Add channel dim for 3D volumes
+        iterates_channels = self.normalization_scheme in {
+            'instance_zscore', 'instance_minmax', 'percentile_minmax',
+        }
+        added_channel_axis = iterates_channels and original_ndim <= 3
+        if added_channel_axis:
             data_slice = data_slice[np.newaxis, ...]
             if self.verbose: print(f"  Added temporary channel dim for normalization: {data_slice.shape}")
 
@@ -1036,7 +1041,7 @@ class Volume:
             raise ValueError(f"Internal Error: Unknown normalization scheme '{self.normalization_scheme}' encountered.")
 
         # Remove temporary channel dimension if it was added
-        if not has_channel_dim and original_ndim == 3 and data_slice.ndim == 4:
+        if added_channel_axis:
             data_slice = data_slice[0, ...]
             if self.verbose: print(f"  Removed temporary channel dim: {data_slice.shape}")
 
