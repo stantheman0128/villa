@@ -26,7 +26,7 @@ def trainer_matches(args, name, cwd='.'):
     if config is None:
         return False
     try:
-        return json.loads((Path(cwd)/config).read_text()).get('name') == name
+        return json.loads((Path(cwd)/config).read_text(encoding="utf-8-sig")).get('name') == name
     except (OSError, ValueError):
         return False
 
