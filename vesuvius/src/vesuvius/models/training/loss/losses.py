@@ -12,7 +12,7 @@ from vesuvius.image_proc.geometry.structure_tensor import (
 # Import nnUNet losses
 from vesuvius.models.training.loss.nnunet_losses import (
     DC_and_CE_loss, DC_and_BCE_loss, MemoryEfficientSoftDiceLoss,
-    DeepSupervisionWrapper
+    DeepSupervisionWrapper, softmax_helper_dim1,
 )
 from vesuvius.models.training.loss.ect_loss import ECTLoss
 
@@ -991,6 +991,33 @@ class NormalGatedRepulsionLoss(nn.Module):
 
 #######################################################################################################################
 
+def _resolve_dice_nonlin(value):
+    """Map a config value to the nonlinearity for standalone soft dice.
+
+    This registry entry is grouped with BCEWithLogitsLoss, so an omitted
+    nonlinearity means sigmoid. Without that, raw logits are treated as
+    probabilities and the dice denominator crosses zero. A YAML file cannot
+    store torch.sigmoid; "sigmoid" and "softmax" name the two helpers, and
+    "none" leaves the inputs unchanged.
+    """
+    if value is None:
+        return torch.sigmoid
+    if callable(value):
+        return value
+    if isinstance(value, str):
+        key = value.strip().lower()
+        if key == "sigmoid":
+            return torch.sigmoid
+        if key == "softmax":
+            return softmax_helper_dim1
+        if key == "none":
+            return None
+    raise ValueError(
+        "apply_nonlin must be sigmoid, softmax, none, or a callable; "
+        f"got {value!r}"
+    )
+
+
 def _create_loss(name, loss_config, weight, ignore_index, pos_weight, mgr=None):
     # Define losses that don't natively support ignore_index
     losses_without_ignore_support = ['BCEWithLogitsLoss', 'MSELoss', 'SmoothL1Loss', 'L1Loss', 'WeightedSmoothL1Loss']
@@ -1144,9 +1171,10 @@ def _create_loss(name, loss_config, weight, ignore_index, pos_weight, mgr=None):
         )
     
     elif name == 'MemoryEfficientSoftDiceLoss':
-        # Standalone memory efficient dice loss
+        # Standalone memory efficient dice loss. Same logits contract as
+        # BCEWithLogitsLoss: sigmoid unless the config names another one.
         base_loss = MemoryEfficientSoftDiceLoss(
-            apply_nonlin=loss_config.get('apply_nonlin', None),
+            apply_nonlin=_resolve_dice_nonlin(loss_config.get('apply_nonlin', None)),
             batch_dice=loss_config.get('batch_dice', False),
             do_bg=loss_config.get('do_bg', True),
             smooth=loss_config.get('smooth', 1.),
