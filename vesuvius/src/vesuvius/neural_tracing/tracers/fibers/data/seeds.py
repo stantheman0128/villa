@@ -63,7 +63,7 @@ def directed_seed(fiber: TracedFiber, vol, rng, sign: float, margin: float = 32.
 
 def read_manifest(path):
     """Check the frozen payload hash, split membership and seed identities."""
-    saved=json.loads(Path(path).read_text())
+    saved=json.loads(Path(path).read_text(encoding='utf-8-sig'))
     payload={k:v for k,v in saved.items() if k!='sha256'}
     digest=hashlib.sha256(json.dumps(payload,sort_keys=True,default=jsonable).encode()).hexdigest()
     if digest!=saved['sha256']:
