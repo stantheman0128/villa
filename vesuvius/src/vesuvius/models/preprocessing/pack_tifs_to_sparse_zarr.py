@@ -185,7 +185,7 @@ def discover_samples(
     # Load splits if available
     split_lookup: Dict[str, str] = {}
     if splits_json and splits_json.exists():
-        with open(splits_json) as f:
+        with open(splits_json, encoding="utf-8-sig") as f:
             splits_data = json.load(f)
         # Handle nnUNet-style splits format (list of fold dicts)
         if isinstance(splits_data, list):
