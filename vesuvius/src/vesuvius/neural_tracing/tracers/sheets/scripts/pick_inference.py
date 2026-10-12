@@ -24,7 +24,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     rows = []
     for folder in args.folders:
-        report = json.loads((folder/'report.json').read_text())
+        report = json.loads((folder/'report.json').read_text(encoding="utf-8-sig"))
         if args.model not in report['models']:
             continue
         s = report['models'][args.model]['summary']
