@@ -67,7 +67,7 @@ def seed_from_patch(path, line: str, span: str, direction: str):
 
 
 def seed_from_json(path):
-    document = json.loads(Path(path).read_text())
+    document = json.loads(Path(path).read_text(encoding="utf-8-sig"))
     points = np.asarray(document['points'], np.float64)
     return points, np.broadcast_to(np.asarray(document['direction'], np.float64), points.shape)
 
@@ -167,7 +167,7 @@ def surface_area_vx2(xyz: np.ndarray) -> float:
 def add_area(meta_path: Path, xyz: np.ndarray, voxel_size_um: float | None) -> dict:
     """Write ``area_vx2`` and, with the level-0 voxel size (micrometres), ``area_cm2`` into a tifxyz meta.json (the
     keys VC3D reads)."""
-    meta = json.loads(meta_path.read_text())
+    meta = json.loads(meta_path.read_text(encoding="utf-8-sig"))
     meta['area_vx2'] = surface_area_vx2(xyz)
     if voxel_size_um:
         meta['area_cm2'] = meta['area_vx2']*voxel_size_um**2/1e8
