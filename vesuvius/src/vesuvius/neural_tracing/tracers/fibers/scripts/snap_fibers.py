@@ -46,7 +46,7 @@ def main(argv=None):
                           args.output_step, args.limit, provenance)
     else:
         paths = sorted(args.input.glob('*.json')) if args.input.is_dir() else [args.input]
-        paths = [p for p in paths if json.loads(p.read_text()).get('type') == 'vc3d_fiber']
+        paths = [p for p in paths if json.loads(p.read_text(encoding="utf-8-sig")).get('type') == 'vc3d_fiber']
         result = snap_json(paths, args.output, presence, args.native_per_voxel, args.offset, cfg, args.device,
                            args.output_step, provenance)
     print(json.dumps(dict(result, seconds=round(time.monotonic()-began, 1), output=str(args.output))))
