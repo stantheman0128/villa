@@ -68,7 +68,7 @@ def load_sources(dataset_config, out, *, ct_normalization=None):
     """
     from vesuvius.neural_tracing.tracers.shared.crop_sampling.normalization import prepare_normalization
     document, digest = read_dataset_config(dataset_config)
-    known = json.loads(Path(ct_normalization).read_text()) if ct_normalization else None
+    known = json.loads(Path(ct_normalization).read_text(encoding="utf-8-sig")) if ct_normalization else None
     sources = []
     for entry in document['sources']:
         if entry['kind'] == 'paris4':
