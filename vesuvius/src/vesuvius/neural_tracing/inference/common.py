@@ -126,7 +126,7 @@ def _read_tifxyz_scale_from_meta(tifxyz_path):
         raise RuntimeError(
             f"Unable to resolve stored tifxyz density scale: missing meta.json at {meta_path}"
         )
-    with open(meta_path, "rt") as meta_fp:
+    with open(meta_path, "rt", encoding="utf-8-sig") as meta_fp:
         meta = json.load(meta_fp)
     return _normalize_scale_rc(meta.get("scale"), source_label=str(meta_path))
 
@@ -165,7 +165,7 @@ def resolve_tifxyz_params(args, model_config, volume_scale, input_scale=None):
     if tifxyz_voxel_size_um is None:
         meta_path = os.path.join(args.volume_path, "meta.json")
         if os.path.exists(meta_path):
-            with open(meta_path, "rt") as meta_fp:
+            with open(meta_path, "rt", encoding="utf-8-sig") as meta_fp:
                 tifxyz_voxel_size_um = json.load(meta_fp).get("voxelsize", None)
     if tifxyz_voxel_size_um is None:
         tifxyz_voxel_size_um = 8.24
@@ -343,7 +343,7 @@ def resolve_extrapolation_settings(args, model_config=None, load_checkpoint_conf
 
     config_path = getattr(args, "config_path", None)
     if config_path and os.path.exists(config_path):
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8-sig") as f:
             config_data = json.load(f)
         if isinstance(config_data, dict):
             runtime_config.update(config_data)
