@@ -566,3 +566,60 @@ def test_injected_command_runtime_writes_then_builds_all_levels(tmp_path, monkey
         np.all(np.asarray(zarr.open_group(output, mode="r")[str(level)]) == 128)
         for level in range(6)
     )
+
+
+class _DepthRecorder(torch.nn.Module):
+    """Records the BCZYX shape each forward pass receives."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen: list[tuple[int, ...]] = []
+
+    def forward(self, image_BCZYX):
+        self.seen.append(tuple(image_BCZYX.shape))
+        return {"ink": image_BCZYX.mean(dim=2, keepdim=True)}
+
+
+def _native_model_args(**overrides):
+    values = {
+        "checkpoint": "memory://checkpoint",
+        "gpu_ids": (),
+        "compile_model": False,
+        "compile_mode": "default",
+        "amp_dtype": "fp32",
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _patch_native_loader(monkeypatch, recorder: _DepthRecorder) -> None:
+    monkeypatch.setattr(native, "make_model", lambda config: recorder)
+    monkeypatch.setattr(native, "load_model_state", lambda model, state: None)
+    monkeypatch.setattr(
+        native,
+        "select_native_inference_weights",
+        lambda payload, source=None: ("model", {}),
+    )
+    monkeypatch.setattr(native, "resolve_amp_dtype", lambda *args, **kwargs: None)
+
+
+def test_native_inference_honours_checkpoint_input_depth_padding(monkeypatch):
+    recorder = _DepthRecorder()
+    _patch_native_loader(monkeypatch, recorder)
+    config = SimpleNamespace(model=SimpleNamespace(input_pad_depth_to=5))
+
+    bundle = native._load_native_model({}, config, _native_model_args())
+    bundle.model(torch.zeros(1, 1, 3, 4, 4))
+
+    assert recorder.seen == [(1, 1, 5, 4, 4)]
+
+
+def test_native_inference_leaves_depth_alone_without_configured_padding(monkeypatch):
+    recorder = _DepthRecorder()
+    _patch_native_loader(monkeypatch, recorder)
+    config = SimpleNamespace(model=SimpleNamespace(input_pad_depth_to=None))
+
+    bundle = native._load_native_model({}, config, _native_model_args())
+    bundle.model(torch.zeros(1, 1, 3, 4, 4))
+
+    assert recorder.seen == [(1, 1, 3, 4, 4)]
