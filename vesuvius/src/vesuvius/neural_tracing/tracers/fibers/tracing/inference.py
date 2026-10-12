@@ -223,7 +223,7 @@ def main(argv=None, *, checkpoint_loader=load_checkpoint, tracer_class=FiberTrac
         torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = False
     confidence, n_commit, gate = args.confidence, args.n_commit, args.gate
     if args.policy:
-        selected = json.load(open(args.policy))['operating_policy']
+        selected = json.load(open(args.policy, encoding="utf-8-sig"))['operating_policy']
         confidence = selected['confidence'] if confidence is None else confidence
         n_commit = selected['n_commit'] if n_commit is None else n_commit
         gate = selected.get('gate') if gate is None else gate
