@@ -312,7 +312,7 @@ def load(path: str | Path | None = None, overrides: list[str] | None = None) -> 
         path = Path(path)
         if not path.is_file() and (PACKAGE/'configs'/path).is_file():
             path = PACKAGE/'configs'/path
-        document = json.loads(path.read_text())
+        document = json.loads(path.read_text(encoding="utf-8-sig"))
     for text in overrides or []:
         section, name, value = parse_override(text)
         document.setdefault(section, {})[name] = value
