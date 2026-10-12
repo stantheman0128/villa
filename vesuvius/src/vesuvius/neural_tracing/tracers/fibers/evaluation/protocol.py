@@ -128,7 +128,7 @@ def run(args, sources):
         raise ValueError('Final evaluation needs an explicit --confidence or a calibration --policy')
     model, _, _, _, ck = load_checkpoint(args.checkpoint, 'cpu')
     if args.policy is not None:
-        selection = json.loads(Path(args.policy).read_text())
+        selection = json.loads(Path(args.policy).read_text(encoding="utf-8-sig"))
         if selection.get('split') != 'calibration' or selection.get('selected') is None:
             raise ValueError('The policy file is not a calibration selection')
         policy = checkpoint_policy(ck, model.cfg, confidence=selection['operating_policy']['confidence'],
@@ -183,7 +183,7 @@ def paired_report(base, new, repeats=4000, seed=0):
 
 
 def compare(args):
-    base, new = (json.loads(Path(p).read_text()) for p in (args.base, args.new))
+    base, new = (json.loads(Path(p).read_text(encoding="utf-8-sig")) for p in (args.base, args.new))
     report = dict(base=dict(checkpoint=base['checkpoint'], operating_policy=base['operating_policy']),
                   new=dict(checkpoint=new['checkpoint'], operating_policy=new['operating_policy']),
                   paired=paired_report(base, new))
