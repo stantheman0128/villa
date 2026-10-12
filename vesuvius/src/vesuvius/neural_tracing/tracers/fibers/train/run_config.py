@@ -183,7 +183,7 @@ def resolve(document, base='.'):
 
 def load(path):
     path = Path(path).resolve()
-    return resolve(json.loads(path.read_text()), path.parent)
+    return resolve(json.loads(path.read_text(encoding="utf-8-sig")), path.parent)
 
 
 def model_config(run):
