@@ -112,7 +112,7 @@ def seeds_from(report: Path, cfg, steps: int, front: float, min_valid: float, sp
     sampler, data = _seed_sampler(cfg, steps, front, min_valid, split, all_val, seed_split)
     by_key = {(info.root, info.name): info for info in sampler.index}
     seeds, kept = [], []
-    for i, meta in enumerate(json.loads(Path(report).read_text())['seeds']):
+    for i, meta in enumerate(json.loads(Path(report).read_text(encoding="utf-8-sig"))['seeds']):
         info = by_key.get((meta.get('root'), meta['patch']))
         w = None if info is None else sampler._episode(info, meta['axis'], meta['sign_u'], meta['sign_v'],
                                                        meta['anchor'])
