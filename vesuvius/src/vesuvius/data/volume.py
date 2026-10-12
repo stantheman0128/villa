@@ -58,6 +58,36 @@ def _is_transient_read_error(exc: BaseException) -> bool:
     return False
 
 
+# Cube NRRD downloads sit outside _read_with_retry. Without a timeout, a server
+# that accepts the connection and then stops sending parks the process.
+_CUBE_DOWNLOAD_TIMEOUT = 60.0
+_CUBE_DOWNLOAD_RETRIES = 4
+
+
+def _get_with_retry(url, timeout=None, retries=None):
+    """GET one cube file, retrying the transient failures zarr reads already retry.
+
+    ``retries`` below 1 still performs one attempt. A timeout is transient, so a
+    stalled download uses the same budget instead of hanging.
+    """
+    if timeout is None:
+        timeout = _CUBE_DOWNLOAD_TIMEOUT
+    if retries is None:
+        retries = _CUBE_DOWNLOAD_RETRIES
+    retries = max(1, int(retries))
+    delay = 0.5
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except Exception as e:
+            if attempt == retries - 1 or not _is_transient_read_error(e):
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 8.0)
+
+
 # Define the functions needed here to avoid circular imports
 def list_files():
     """Load and return the scrolls configuration data from a YAML file."""
@@ -1319,24 +1349,21 @@ class Cube:
                         array, _ = nrrd.read(temp_file_path)
 
                     else:
-                        # Download the remote file
-                        response = requests.get(url)
-                        response.raise_for_status()  # Ensure we notice bad responses
-                        # Write the downloaded content to the temporary file with the same directory structure and filename
+                        # Download the remote file. Close the file before reading
+                        # it: the write buffer is not on disk until then, so a
+                        # read of the same path inside the with-block sees a
+                        # short or empty NRRD.
+                        response = _get_with_retry(url)
                         with open(temp_file_path, 'wb') as tmp_file:
                             tmp_file.write(response.content)
-
-                            array, _ = nrrd.read(temp_file_path)
+                        array, _ = nrrd.read(temp_file_path)
 
                 else:
-                    response = requests.get(url)
-                    response.raise_for_status()  # Ensure we notice bad responses
+                    response = _get_with_retry(url)
                     with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
                         tmp_file.write(response.content)
                         temp_file_path = tmp_file.name
-                        # Read the NRRD file from the temporary file
-
-                        array, _ = nrrd.read(temp_file_path)
+                    array, _ = nrrd.read(temp_file_path)
 
             output.append(array)
 
