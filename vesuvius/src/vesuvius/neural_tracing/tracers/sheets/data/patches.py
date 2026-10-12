@@ -71,7 +71,7 @@ class GridSpec:
 
 def _scan(path: Path) -> PatchInfo | None:
     try:
-        meta = json.loads((path/'meta.json').read_text())
+        meta = json.loads((path/'meta.json').read_text(encoding='utf-8-sig'))
         xyz = [tifffile.memmap(path/f'{c}.tif') for c in 'xyz']
     except (OSError, ValueError, json.JSONDecodeError):
         return None
