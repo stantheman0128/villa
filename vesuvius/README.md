@@ -5,11 +5,9 @@ From [Vesuvius Challenge](https://scrollprize.org), a Python library for :
 - Training 2d or 3d models on regression tasks
 - Inferring with models trained with the trainers provided in the package or with pretrained nnUNetv2 models
   - Inference can be performed on remote data (http, s3) stored as Zarr arrays
-- Rendering .obj segments with local or remote data
 - Voxelizing large .obj segmentations for use as 3d labels
 - Preprocessing labels of fiber-like structures
 - Interactive labeling and model training through a Napari based trainer
-- Proofreading large arrays of image/label pairs and saving approved chunks
 - Computing structure tensors on large Zarr arrays, and deriving eigenvalues and eigenvectors from them
 
 `vesuvius` also comes prepackaged with: 
@@ -21,20 +19,23 @@ _this package is in active development_
 
 ### Entrypoints: 
 
-| Name                          | Script                             | Description                                                                                                                                                                                               |
-| ----------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vesuvius.surface_preflight`  | `surface_preflight`                | [fails closed](docs/surface-preflight.md) when a TIFXYZ surface is not structurally valid, has inconsistent metadata scale/bbox, or is not safely paired with its Zarr/OME-Zarr CT volume |
-| `vesuvius.predict`            | `models.run.inference`             | outputs logits from a pretrained nnUNet-v2 model or one trained within the Vesuvius training framework; currently only works on Zarr data and can be fully distributed with `--num_parts` and `--part_id` |
-| `vesuvius.blend_logits`       | `models.run.blending`              | blends the logits from `vesuvius.predict` using Gaussian blending                                                                                                                                         |
-| `vesuvius.finalize_outputs`   | `models.run.finalize_outputs`      | performs softmax / argmax / none on the blended array and writes a final `uint8` volume                                                                                                                   |
-| `vesuvius.compute_st`         | `structure_tensor.run_create_st`   | computes structure tensors on input data and derives eigen-values/vectors                                                                                                                                 |
-| `vesuvius.napari_trainer`     | `napari_trainer.main_window`       | launches a Napari window for interactive training and inference                                                                                                                                           |
-| `vesuvius.proofreader`        | `utils.vc_proofreader.main`        | opens a Napari window that loads local / remote image-label arrays and extracts training patches                                                                                                          |
-| `vesuvius.voxelize_obj`       | `scripts.voxelize_objs`            | converts input `.obj` meshes to voxel grids and outputs `.tif` stacks                                                                                                                                     |
-| `vesuvius.refine_labels`      | `scripts.edt_frangi_label`         | refines surface or fibre labels with a custom Frangi-based filter                                                                                                                                         |
-| `vesuvius.render_obj`         | `rendering.mesh_to_surface`        | renders `.obj` meshes and outputs their surface-volume layers                                                                                                                                             |
-| `vesuvius.flatten_obj`        | `rendering.slim_uv`                | flattens an `.obj` mesh using `slim_uv`                                                                                                                                                                   |
-| `vesuvius.train`              | `models.run.train`                 | main entry point for training models                                                                                                                                                                      |
+| Name                          | Script                               | Description                                                                                                                                                                                               |
+| ----------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vesuvius.accept_terms`       | `install.accept_terms`               | accepts the data-use terms once before the library reads scroll data                                                                                                                                     |
+| `vesuvius.predict`            | `models.run.inference`               | outputs logits from a pretrained nnUNet-v2 model or one trained within the Vesuvius training framework; currently only works on Zarr data and can be fully distributed with `--num_parts` and `--part_id` |
+| `vesuvius.blend_logits`       | `models.run.blending`                | blends the logits from `vesuvius.predict` using Gaussian blending                                                                                                                                         |
+| `vesuvius.blend_and_finalize` | `models.run.blending`                | blends partial inference outputs and finalizes them in one pass                                                                                                                                          |
+| `vesuvius.finalize_outputs`   | `models.run.finalize_outputs`        | performs softmax / argmax / none on the blended array and writes a final `uint8` volume                                                                                                                   |
+| `vesuvius.compute_st`         | `structure_tensor.run_create_st`     | computes structure tensors on input data and derives eigen-values/vectors                                                                                                                                 |
+| `vesuvius.napari_trainer`     | `napari_trainer.main_window`         | launches a Napari window for interactive training and inference                                                                                                                                           |
+| `vesuvius.voxelize_obj`       | `image_proc.run.voxelize_objs`       | converts input `.obj` meshes to voxel grids and outputs `.tif` stacks                                                                                                                                     |
+| `vesuvius.refine_labels`      | `image_proc.run.edt_frangi_label`    | refines surface or fibre labels with a custom Frangi-based filter                                                                                                                                         |
+| `vesuvius.train`              | `models.training.train`              | main entry point for training models                                                                                                                                                                      |
+| `vesuvius.zarr_tasks`         | `image_proc.run.zarr_tasks.__main__` | runs a named task on zarr arrays (threshold, scale, recompress, and the other tasks `--list-tasks` prints)                                                                                               |
+| `vesuvius.find_patches`       | `models.preprocessing.patches.cli`   | writes per-volume patch caches for a dataset                                                                                                                                                              |
+| `vesuvius.surface_preflight`  | `surface_preflight`                  | [fails closed](docs/surface-preflight.md) when a TIFXYZ surface is not structurally valid, has inconsistent metadata scale/bbox, or is not safely paired with its Zarr/OME-Zarr CT volume                |
+
+`vesuvius.render_obj` and `vesuvius.flatten_obj` are not commands in this package. That code was retired with ThaumatoAnakalyptor, now under [`deprecated/thaumato-anakalyptor`](../deprecated/thaumato-anakalyptor). To render a segment into a surface volume, use `vc_render_tifxyz` from [volume-cartographer](../volume-cartographer). The proofreader is also outside this package: [`segmentation/vc_proofreader`](../segmentation/vc_proofreader). See [Proofreading labels](#proofreading-labels).
 
 
 
@@ -85,7 +86,7 @@ Additionally, the augmentations provided within this package are from another of
 
 Copying the modules directly into `vesuvius` was a choice of end-user friendliness, as we were using highly modified branches of both libraries, which created conflicts if an end user were to attempt to run any of our models.
 
-_**Detailed documentation for training and inference are located in [the docs folder](docs/docs)**_
+_**Detailed documentation for training and inference are located in [the docs folder](docs)**_
 ___
 
 
@@ -99,21 +100,23 @@ ___
 6. Infer on the same layer, or another by importing an image, selecting it in the inference widget, and hitting `Run Inference`
 
 
-![alt text](docs/docs/images/napari_trainer.png)
+![alt text](docs/images/napari_trainer.png)
 
 ___
 
 ### Proofreading labels
 
-1. Update the config in `/utils/vc_proofreader/config.py` with the proper paths
-2. Run `vesuvius.proofreader`
+The proofreader lives in [`segmentation/vc_proofreader`](../segmentation/vc_proofreader). It is not part of the `vesuvius` package.
+
+1. Write a config file (JSON, or a Python script that defines a `config` dict) with the proper paths
+2. From the repo root, run `python segmentation/vc_proofreader/main.py --config <your config>`
 3. Select your desired patch size and min labeled percentage 
 4. Click `run` 
 5. Approve patches with `a` or by checking the box
 6. Skip patches or continue with `spacebar` or `next pair`
 7. Patches are saved in the output dir, and their locations in the .json progress file
 
-![alt text](docs/docs/images/proofreader.png)
+![alt text](docs/images/proofreader.png)
 
 ### Training with `vesuvius.train`
 
@@ -162,5 +165,6 @@ By default, the last 10 checkpoints are saved. This is not a smart way to do it,
 
 Training will run for 1,000 epochs by default, with 200 batches/epoch. This can be modified through the configuration file, which can be optionally provided to `vesuvius.train`, and some examples are provided in the [models folder](src/vesuvius/models/configuration/)
 
-### Rendering and Flattening objs
-Documentation is provided in [the rendering folder](src/vesuvius/rendering/README.md)
+### Rendering segments
+
+`vesuvius.render_obj` and `vesuvius.flatten_obj` are not part of this package. That code was retired with ThaumatoAnakalyptor, now under [`deprecated/thaumato-anakalyptor`](../deprecated/thaumato-anakalyptor). To render a segment into a surface volume, use `vc_render_tifxyz` from [volume-cartographer](../volume-cartographer).
