@@ -10,6 +10,7 @@
 #include "vc/core/types/VcDataset.hpp"
 
 #include <utils/zarr.hpp>
+#include <utils/http_fetch.hpp>
 #include <utils/Json.hpp>
 
 #include <atomic>
@@ -234,6 +235,38 @@ TEST_CASE("openLocalZarrPyramid: uint16 volume")
 TEST_CASE("openLocalZarrPyramid: missing dir throws")
 {
     CHECK_THROWS(openLocalZarrPyramid("/__no__/__where__"));
+}
+
+TEST_CASE("S3 404 is a missing object only for NoSuchKey")
+{
+    const std::string_view no_such_key =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+        "<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>";
+    const std::string_view no_such_bucket =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+        "<Error><Code>NoSuchBucket</Code><Message>The specified bucket does not exist</Message></Error>";
+    const std::string_view truncated =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchBu";
+
+    CHECK(utils::http_404_is_missing_object(no_such_key));
+    CHECK(utils::http_404_is_missing_object({}, "NoSuchKey"));
+    CHECK(utils::http_404_is_missing_object("<html><body>404</body></html>"));
+    CHECK(utils::http_404_is_missing_object({}));
+
+    // A status-only check would treat every one of these as missing and the
+    // chunk cache would persist an empty marker. They are failed fetches.
+    CHECK_FALSE(utils::http_404_is_missing_object(no_such_bucket));
+    CHECK_FALSE(utils::http_404_is_missing_object({}, "NoSuchBucket"));
+    CHECK_FALSE(utils::http_404_is_missing_object(truncated));
+    CHECK_FALSE(utils::http_404_is_missing_object(
+        no_such_key, "NoSuchBucket"));
+
+    utils::HttpResponse response;
+    response.status_code = 404;
+    response.s3_error_code = "NoSuchBucket";
+    CHECK(response.not_found());
+    CHECK_FALSE(utils::http_404_is_missing_object(
+        response.body_string(), response.s3_error_code));
 }
 
 TEST_CASE("optional remote metadata probes accept least-privilege S3 403s")

@@ -8,10 +8,18 @@
 
 #include <utils/http_fetch.hpp>
 
+#ifndef _WIN32
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 #include <cstdlib>
 #include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <future>
 #include <stdexcept>
 #include <string>
@@ -25,6 +33,134 @@ bool requireNetwork()
     const char* env = std::getenv("VC_TEST_REQUIRE_NETWORK");
     return env && env[0] && env[0] != '0';
 }
+
+#ifndef _WIN32
+std::string httpMessage(int status, std::string_view reason,
+                          std::string_view errorCode, std::string_view body)
+{
+    std::string message = "HTTP/1.1 " + std::to_string(status) + " " +
+                          std::string(reason) + "\r\n";
+    message += "Content-Type: application/xml\r\n";
+    if (!errorCode.empty()) {
+        message += "x-amz-error-code: ";
+        message += errorCode;
+        message += "\r\n";
+    }
+    message += "Content-Length: " + std::to_string(body.size()) + "\r\n";
+    message += "Connection: close\r\n\r\n";
+    message += body;
+    return message;
+}
+
+// One request per connection. Used to count HttpClient retries without S3.
+class LocalHttp {
+public:
+    explicit LocalHttp(std::function<std::string(int)> responder)
+        : responder_(std::move(responder))
+    {
+        listenFd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listenFd_ < 0)
+            throw std::runtime_error("local http socket failed");
+        int yes = 1;
+        ::setsockopt(listenFd_, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        if (::bind(listenFd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0 ||
+            ::listen(listenFd_, 8) != 0) {
+            ::close(listenFd_);
+            throw std::runtime_error("local http bind failed");
+        }
+        socklen_t len = sizeof(addr);
+        if (::getsockname(listenFd_, reinterpret_cast<sockaddr*>(&addr), &len) != 0) {
+            ::close(listenFd_);
+            throw std::runtime_error("local http getsockname failed");
+        }
+        port_ = ntohs(addr.sin_port);
+        thread_ = std::thread([this] { serve(); });
+    }
+
+    ~LocalHttp()
+    {
+        stop_.store(true);
+        const int poke = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (poke >= 0) {
+            sockaddr_in addr{};
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            addr.sin_port = htons(port_);
+            ::connect(poke, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+            ::close(poke);
+        }
+        if (thread_.joinable())
+            thread_.join();
+        if (listenFd_ >= 0)
+            ::close(listenFd_);
+    }
+
+    std::string url() const
+    {
+        return "http://127.0.0.1:" + std::to_string(port_) + "/0.0.0";
+    }
+
+    int requests() const { return requests_.load(); }
+
+private:
+    void serve()
+    {
+        while (!stop_.load()) {
+            const int fd = ::accept(listenFd_, nullptr, nullptr);
+            if (fd < 0)
+                continue;
+            if (stop_.load()) {
+                ::close(fd);
+                break;
+            }
+            std::string request;
+            char buffer[1024];
+            while (request.find("\r\n\r\n") == std::string::npos) {
+                const auto n = ::recv(fd, buffer, sizeof(buffer), 0);
+                if (n <= 0)
+                    break;
+                request.append(buffer, buffer + n);
+                if (request.size() > 8192)
+                    break;
+            }
+            const auto message = responder_(requests_.fetch_add(1) + 1);
+            std::size_t sent = 0;
+            while (sent < message.size()) {
+#ifdef MSG_NOSIGNAL
+                const int flags = MSG_NOSIGNAL;
+#else
+                const int flags = 0;
+#endif
+                const auto n = ::send(fd, message.data() + sent, message.size() - sent, flags);
+                if (n <= 0)
+                    break;
+                sent += static_cast<std::size_t>(n);
+            }
+            ::close(fd);
+        }
+    }
+
+    std::function<std::string(int)> responder_;
+    int listenFd_ = -1;
+    int port_ = 0;
+    std::atomic<bool> stop_{false};
+    std::atomic<int> requests_{0};
+    std::thread thread_;
+};
+
+utils::HttpClient retryClient()
+{
+    utils::HttpClient::resetAbort();
+    utils::HttpClient::Config config;
+    config.max_retries = 2;
+    config.connect_timeout = std::chrono::seconds{2};
+    config.transfer_timeout = std::chrono::seconds{2};
+    return utils::HttpClient(std::move(config));
+}
+#endif
 
 utils::HttpResponse response(long status, std::string_view body = {})
 {
@@ -335,6 +471,46 @@ TEST_CASE("HttpClient preserves libcurl transport errors")
     CHECK(response.status_code == 0);
     CHECK_FALSE(response.error_message.empty());
 }
+
+#ifndef _WIN32
+TEST_CASE("HttpClient retries an S3 404 that is not NoSuchKey")
+{
+    const std::string_view bucketXml =
+        "<Error><Code>NoSuchBucket</Code><Message>The specified bucket does not exist</Message></Error>";
+    const std::string_view keyXml =
+        "<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>";
+
+    LocalHttp missingKey([&](int) {
+        return httpMessage(404, "Not Found", "NoSuchKey", keyXml);
+    });
+    const auto missing = retryClient().get(missingKey.url());
+    CHECK(missing.status_code == 404);
+    CHECK(missing.s3_error_code == "NoSuchKey");
+    CHECK(missing.not_found());
+    CHECK(utils::http_404_is_missing_object(missing.body_string(), missing.s3_error_code));
+    CHECK(missingKey.requests() == 1);
+
+    LocalHttp recovered([&](int attempt) {
+        if (attempt < 2)
+            return httpMessage(404, "Not Found", "NoSuchBucket", bucketXml);
+        return httpMessage(200, "OK", {}, "chunk");
+    });
+    const auto fetched = retryClient().get(recovered.url());
+    CHECK(fetched.ok());
+    CHECK(fetched.body_string() == "chunk");
+    CHECK(recovered.requests() == 2);
+
+    LocalHttp stillMissing([&](int) {
+        return httpMessage(404, "Not Found", "NoSuchBucket", bucketXml);
+    });
+    const auto failed = retryClient().get(stillMissing.url());
+    CHECK(failed.status_code == 404);
+    CHECK(failed.s3_error_code == "NoSuchBucket");
+    CHECK_FALSE(utils::http_404_is_missing_object(
+        failed.body_string(), failed.s3_error_code));
+    CHECK(stillMissing.requests() == 3);
+}
+#endif
 
 TEST_CASE("HttpClient scoped observer receives response body bytes")
 {

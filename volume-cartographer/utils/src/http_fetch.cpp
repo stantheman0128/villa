@@ -170,6 +170,7 @@ std::size_t header_callback(char* ptr, std::size_t size,
 
     constexpr std::string_view ct_prefix = "content-type:";
     constexpr std::string_view cl_prefix = "content-length:";
+    constexpr std::string_view s3_code_prefix = "x-amz-error-code:";
 
     auto lower_match = [&](std::string_view prefix) -> bool {
         if (line.size() < prefix.size()) return false;
@@ -194,6 +195,10 @@ std::size_t header_callback(char* ptr, std::size_t size,
             len = len * 10 + static_cast<std::size_t>(c - '0');
         }
         resp.content_length = len;
+    } else if (lower_match(s3_code_prefix)) {
+        auto val = line.substr(s3_code_prefix.size());
+        while (!val.empty() && val.front() == ' ') val.remove_prefix(1);
+        resp.s3_error_code = std::string{val};
     }
 
     return total;
@@ -275,6 +280,25 @@ std::size_t read_callback(char* buffer, std::size_t size,
 }
 
 enum class Method { GET, GET_RANGE, HEAD, PUT };
+
+bool retryable_http_status(const HttpResponse& resp)
+{
+    if (resp.status_code >= 500)
+        return true;
+    // A 404 that names some S3 error other than NoSuchKey is transient
+    // often enough (NoSuchBucket on a new connection) that caching it as a
+    // missing object would persist zeros. Retry it like a 5xx.
+    return resp.status_code == 404 &&
+           !http_404_is_missing_object(resp.body_string(), resp.s3_error_code);
+}
+
+void sleep_before_retry(std::size_t attempt)
+{
+    thread_local std::mt19937 rng{std::random_device{}()};
+    std::uniform_int_distribution<unsigned> jitter(0, 100);
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(200 * (1u << attempt) + jitter(rng)));
+}
 
 HttpResponse perform(const HttpClient::Config& config,
                      std::string_view url,
@@ -405,12 +429,8 @@ HttpResponse perform(const HttpClient::Config& config,
         if (code == CURLE_OK) {
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &resp.status_code);
 
-            // Retry on 5xx server errors
-            if (resp.status_code >= 500 && attempt < config.max_retries) {
-                thread_local std::mt19937 rng{std::random_device{}()};
-                std::uniform_int_distribution<unsigned> jitter(0, 100);
-                std::this_thread::sleep_for(
-                    std::chrono::milliseconds(200 * (1u << attempt) + jitter(rng)));
+            if (retryable_http_status(resp) && attempt < config.max_retries) {
+                sleep_before_retry(attempt);
                 continue;
             }
             return resp;
@@ -422,10 +442,7 @@ HttpResponse perform(const HttpClient::Config& config,
 
         // Retry on network / transient curl errors
         if (attempt < config.max_retries && !HttpClient::isAborted()) {
-            thread_local std::mt19937 rng{std::random_device{}()};
-            std::uniform_int_distribution<unsigned> jitter(0, 100);
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(200 * (1u << attempt) + jitter(rng)));
+            sleep_before_retry(attempt);
             continue;
         }
         break;
@@ -567,21 +584,15 @@ HttpResponse HttpClient::put_file(std::string_view url,
 
         if (code == CURLE_OK) {
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &resp.status_code);
-            if (resp.status_code >= 500 && attempt < config_.max_retries) {
-                thread_local std::mt19937 rng{std::random_device{}()};
-                std::uniform_int_distribution<unsigned> jitter(0, 100);
-                std::this_thread::sleep_for(
-                    std::chrono::milliseconds(200 * (1u << attempt) + jitter(rng)));
+            if (retryable_http_status(resp) && attempt < config_.max_retries) {
+                sleep_before_retry(attempt);
                 continue;
             }
             std::fclose(f);
             return resp;
         }
         if (attempt < config_.max_retries) {
-            thread_local std::mt19937 rng{std::random_device{}()};
-            std::uniform_int_distribution<unsigned> jitter(0, 100);
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(200 * (1u << attempt) + jitter(rng)));
+            sleep_before_retry(attempt);
             continue;
         }
     }

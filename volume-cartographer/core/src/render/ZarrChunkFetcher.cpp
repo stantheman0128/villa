@@ -113,7 +113,7 @@ public:
         auto response = client_.head(makeUrl(key));
         if (response.ok())
             return true;
-        if (response.not_found())
+        if (isMissingObject(response))
             return false;
         if (!utils::is_sftp_url(baseUrl_) && isOptionalRemoteMetadataMiss(
                 response.status_code, key, response.body_string())) {
@@ -139,7 +139,7 @@ public:
             rememberMetadata(key, response.body);
             return std::move(response.body);
         }
-        if (response.not_found())
+        if (isMissingObject(response))
             return std::nullopt;
         if (!utils::is_sftp_url(baseUrl_) && isOptionalRemoteMetadataMiss(
                 response.status_code, key, response.body_string())) {
@@ -156,7 +156,7 @@ public:
         auto response = client_.get_range(makeUrl(key), offset, length);
         if (response.ok())
             return std::move(response.body);
-        if (response.not_found())
+        if (isMissingObject(response))
             return std::nullopt;
         throw HttpStatusError(
             response.status_code, key, responseErrorDetail(response));
@@ -167,7 +167,7 @@ public:
         auto response = client_.head(makeUrl(key));
         if (response.ok() && response.content_length > 0)
             return response.content_length;
-        if (response.not_found())
+        if (isMissingObject(response))
             return std::nullopt;
         if (!response.ok())
             throw HttpStatusError(response.status_code, key);
@@ -213,6 +213,17 @@ private:
         while (!value.empty() && value.back() == '/')
             value.pop_back();
         return value;
+    }
+
+    // A generic 404, and an S3 404 whose code is NoSuchKey, are missing keys.
+    // Any other S3 code on a 404 (NoSuchBucket, a truncated error document)
+    // is a failed fetch. Callers must throw so the chunk cache records an
+    // error instead of a persistent empty marker.
+    static bool isMissingObject(const utils::HttpResponse& response)
+    {
+        return response.status_code == 404 &&
+               utils::http_404_is_missing_object(
+                   response.body_string(), response.s3_error_code);
     }
 
     static utils::HttpClient makeClient(vc::HttpAuth auth)
@@ -1099,8 +1110,12 @@ OpenedChunkedZarr openHttpZarrPyramid(
         try {
             addRemoteLevelFromKey(opened, store, key, physicalLevel);
         } catch (const HttpStatusError& e) {
-            if (e.status() == 404 ||
-                (e.status() == 403 && (!opened.fetchers.empty() || firstPhysicalLevel == 0)))
+            // A thrown 404 is not a missing key: ClassifyingHttpStore only
+            // throws that status when S3 named some other error. Stopping the
+            // probe here would open a partial pyramid and later cache holes.
+            if (e.status() == 404)
+                throw;
+            if (e.status() == 403 && (!opened.fetchers.empty() || firstPhysicalLevel == 0))
                 break;
             throw;
         } catch (const std::exception& error) {

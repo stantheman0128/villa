@@ -32,6 +32,8 @@ struct HttpResponse {
     std::size_t content_length = 0;
     // Populated when libcurl fails before an HTTP response is received.
     std::string error_message;
+    // S3 HEAD errors have no body. The code arrives in x-amz-error-code.
+    std::string s3_error_code;
 
     [[nodiscard]] bool ok() const noexcept { return status_code >= 200 && status_code < 300; }
     [[nodiscard]] bool not_found() const noexcept { return status_code == 404; }
@@ -40,6 +42,59 @@ struct HttpResponse {
         return {reinterpret_cast<const char*>(body.data()), body.size()};
     }
 };
+
+// A 404 is a missing object when it is an ordinary HTTP miss, or when S3
+// names the code NoSuchKey. Any other S3 code (NoSuchBucket, a truncated
+// error document) is a failed fetch and must not be cached as an empty chunk.
+[[nodiscard]] inline bool http_404_is_missing_object(
+    std::string_view body,
+    std::string_view header_error_code = {}) noexcept
+{
+    const auto trim = [](std::string_view value) noexcept {
+        while (!value.empty() &&
+               (value.front() == ' ' || value.front() == '\t' ||
+                value.front() == '\n' || value.front() == '\r')) {
+            value.remove_prefix(1);
+        }
+        while (!value.empty() &&
+               (value.back() == ' ' || value.back() == '\t' ||
+                value.back() == '\n' || value.back() == '\r')) {
+            value.remove_suffix(1);
+        }
+        return value;
+    };
+
+    const auto xml_code = [&]() -> std::optional<std::string_view> {
+        constexpr std::string_view open{"<Code>"};
+        constexpr std::string_view close{"</Code>"};
+        const auto start = body.find(open);
+        if (start == std::string_view::npos)
+            return std::nullopt;
+        const auto code_at = start + open.size();
+        const auto end = body.find(close, code_at);
+        if (end == std::string_view::npos)
+            return std::string_view{};
+        return trim(body.substr(code_at, end - code_at));
+    };
+
+    std::optional<std::string_view> code;
+    if (const auto header = trim(header_error_code); !header.empty())
+        code = header;
+    else
+        code = xml_code();
+
+    if (code) {
+        if (code->empty())
+            return false;
+        return *code == "NoSuchKey";
+    }
+    if (body.find("<?xml") != std::string_view::npos ||
+        body.find("<Error") != std::string_view::npos ||
+        body.find("<Code") != std::string_view::npos) {
+        return false;
+    }
+    return true;
+}
 
 // ---------------------------------------------------------------------------
 // HttpAuth
