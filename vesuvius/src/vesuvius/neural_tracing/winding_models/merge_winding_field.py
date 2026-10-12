@@ -345,13 +345,13 @@ def voxelize(xyz, band, ds, device):
 def load_patch_metas(patches_dir, band, scratch):
     cache = scratch / "patch_metas.json"
     if cache.exists():
-        entries = json.loads(cache.read_text())
+        entries = json.loads(cache.read_text(encoding="utf-8-sig"))
         if entries.get("patches_dir") == str(patches_dir):
             return entries["names"]
 
     def read_meta(entry):
         try:
-            meta = json.loads((entry / "meta.json").read_text())
+            meta = json.loads((entry / "meta.json").read_text(encoding="utf-8-sig"))
             bbox = meta.get("bbox")
             return entry.name, bbox
         except (OSError, ValueError, KeyError):
