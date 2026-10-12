@@ -545,7 +545,7 @@ def validate_spiral_supervision(
     manifest_path = root / "manifest.json"
     if not manifest_path.is_file():
         raise FileNotFoundError(f"compact supervision manifest is missing: {root}")
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
     if manifest.get("artifact_type") != FORMAT_NAME:
         raise ValueError(f"not a compact winding supervision store: {root}")
     if int(manifest.get("format_version", -1)) != FORMAT_VERSION:
