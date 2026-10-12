@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 from typing import Iterable, Literal, Sequence
+import warnings
 
 import cv2
 import numpy as np
@@ -140,8 +141,21 @@ def _normalized_2d_shape(
 
 
 def load_image(path: Path) -> np.ndarray:
-    """Read a TIFF or PNG as one contiguous two-dimensional array."""
+    """Read a TIFF or PNG as one contiguous two-dimensional array.
+
+    A multi-page TIFF stacks into ``(pages, height, width)``. Treating the
+    last axis as channels then writes a scrambled label, for example
+    ``(5, 40, 60)`` becomes ``(5, 40)``, and the conversion still succeeds.
+    Page count is what distinguishes that file from a single-page RGB image.
+    """
     if path.suffix.lower() in {".tif", ".tiff"}:
+        with tifffile.TiffFile(path) as tif:
+            page_count = len(tif.pages)
+        if page_count != 1:
+            raise ValueError(
+                f"{path} is a multi-page TIFF ({page_count} pages); "
+                "create_label_zarrs expects one 2D label image per file"
+            )
         image = tifffile.imread(path)
     else:
         image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
@@ -298,17 +312,23 @@ def _get_streamable_tiff_metadata(
             # Tiled input streamed before this change, unconditionally. Leave
             # that exactly as it was: every extra condition here is a tiled
             # file that regresses to the in-memory path it was exempt from.
+            # A tiled multi-page file still writes page 0. Say so, instead of
+            # dropping the other pages with no signal.
+            page_count = len(tif.pages)
+            if page_count != 1:
+                warnings.warn(
+                    f"{path} is a multi-page TIFF ({page_count} pages); "
+                    "only the first page is written",
+                    RuntimeWarning,
+                    stacklevel=3,
+                )
             return _normalized_2d_shape(page.shape, path), np.dtype(page.dtype)
 
         # Striped input is what this change adds. The two conditions below
         # apply only to it.
         if len(tif.pages) != 1:
-            # The rest of this module -- _normalize_to_2d,
-            # _normalized_2d_shape, _create_ome_zarr_datasets(image_shape:
-            # tuple[int, int]) -- is built for a single flat 2D label image.
-            # A genuine multi-page file already produces silently wrong output
-            # on the in-memory path today, independent of this change; that is
-            # a separate bug and this PR does not touch it.
+            # Streaming would keep page 0 and drop the rest. Returning None
+            # sends the file to load_image, which rejects a multi-page TIFF.
             return None
         if page.compression not in _STREAMABLE_COMPRESSIONS:
             # Some codecs (notably old-style JPEG, compression 6) need
