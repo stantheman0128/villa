@@ -554,8 +554,9 @@ uv run --no-sync pytest tests -m "not slow and not network"
 - ResNet3D, TimeSformer/container inference, `normal_pooled_3d`, mean-teacher,
   Betti matching, sweeps, and the embedded sample viewer are not available in
   this package.
-- Positive native label or supervision dilation enters the CUDA/cuCIM path;
-  use zero dilation where that capability is unavailable.
+- Positive native label or supervision dilation uses cuCIM on CUDA when that
+  package imports, and the CPU `edt` package otherwise. The CPU path matches
+  the cuCIM fill rule and is slower.
 - Flat TIFF and native OME-Zarr encoding intentionally differ: flat output
   truncates scaled probabilities, while native output rounds probabilities and
   derived pyramid means.
