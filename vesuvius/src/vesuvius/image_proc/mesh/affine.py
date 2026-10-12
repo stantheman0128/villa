@@ -19,7 +19,9 @@ def axis_perm(order: str) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
 
 def load_transform_from_json(json_path: Union[str, Path]) -> np.ndarray:
     """Load a 3x4/4x4 affine transform matrix from JSON."""
-    with open(json_path, "r") as f:
+    # utf-8-sig: transform JSON is UTF-8, and Windows editors often add a BOM.
+    # A locale open (cp1252) rejects bytes that code page does not define.
+    with open(json_path, "r", encoding="utf-8-sig") as f:
         data = json.load(f)
 
     if "transformation_matrix" not in data:
