@@ -74,7 +74,7 @@ def export_afv(out, destination=None, template=None, ct=None):
     """Write OUT's finished fibers to ``destination`` (default OUT/fibers.afv, replaced); returns write_afv's counts.
     The coordinate frame: ``template``'s when given, else that of the run's CT (``ct`` overrides it)."""
     out = Path(out)
-    record = json.loads((out/'run.json').read_text())
+    record = json.loads((out/'run.json').read_text(encoding="utf-8-sig"))
     destination = Path(destination) if destination else out/'fibers.afv'
     frame = None
     if not template:
