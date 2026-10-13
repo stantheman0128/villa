@@ -115,7 +115,7 @@ class VolumeSlabExtractor:
         if not transform_path.is_file():
             raise ValueError(f"registration transform is missing: {transform_path}")
 
-        with transform_path.open() as transform_file:
+        with transform_path.open(encoding="utf-8-sig") as transform_file:
             values = np.asarray(
                 json.load(transform_file)["transformation_matrix"], dtype=np.float64
             )
