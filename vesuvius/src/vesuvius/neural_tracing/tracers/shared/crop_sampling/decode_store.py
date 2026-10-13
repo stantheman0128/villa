@@ -33,7 +33,7 @@ RAW_SUFFIX = '.raw'
 
 
 def read_meta(path) -> dict:
-    return json.loads(Path(path, '.zarray').read_text())
+    return json.loads(Path(path, '.zarray').read_text(encoding='utf-8-sig'))
 
 
 def chunk_keys(path, sep) -> list[tuple[int, int, int]]:
