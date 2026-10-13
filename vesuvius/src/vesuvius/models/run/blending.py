@@ -58,7 +58,7 @@ class SpatialPatchGrid:
             with fsspec.open(zarray_path, 'r', anon=False) as f:
                 zarray = json.load(f)
         else:
-            with open(zarray_path, 'r') as f:
+            with open(zarray_path, 'r', encoding="utf-8-sig") as f:
                 zarray = json.load(f)
 
         zarr_format = zarray.get('zarr_format')
