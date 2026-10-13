@@ -197,7 +197,7 @@ def _export_part(task: tuple[str, str, dict, int, int, int, int]) -> dict:
     destination = Path(partial_path) / "parts" / name / f"{start:08d}_{end:08d}"
     part_manifest = destination / "manifest.json"
     if part_manifest.is_file():
-        existing = json.loads(part_manifest.read_text())
+        existing = json.loads(part_manifest.read_text(encoding="utf-8-sig"))
         if (existing.get("source_signature") == signature
                 and _arrays_are_valid(destination, existing)):
             return existing
