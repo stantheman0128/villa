@@ -109,7 +109,7 @@ def build_index(patches_dir, cache_dir: str | Path, workers: int = 8) -> list[Pa
     key = hashlib.sha256(json.dumps([INDEX_VERSION, str(patches_dir.resolve()), names]).encode()).hexdigest()[:16]
     cache = Path(cache_dir)/f'patch_index_{key}.json'
     if cache.is_file():
-        return [PatchInfo(**dict(row, bbox=tuple(row['bbox']))) for row in json.loads(cache.read_text())]
+        return [PatchInfo(**dict(row, bbox=tuple(row['bbox']))) for row in json.loads(cache.read_text(encoding="utf-8-sig"))]
     with ThreadPoolExecutor(workers) as pool:
         index = [info for info in pool.map(_scan, (patches_dir/n for n in names)) if info is not None]
     cache.parent.mkdir(parents=True, exist_ok=True)
