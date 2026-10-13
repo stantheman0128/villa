@@ -27,7 +27,7 @@ from vesuvius.neural_tracing.heatmap_single_point.visualization import make_canv
 @click.argument('config_path', type=click.Path(exists=True))
 def train(config_path):
 
-    with open(config_path, 'r') as f:
+    with open(config_path, 'r', encoding="utf-8-sig") as f:
         config = json.load(f)
 
     out_dir = config['out_dir']
