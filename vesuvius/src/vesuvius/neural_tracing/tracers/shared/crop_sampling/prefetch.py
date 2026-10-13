@@ -43,7 +43,7 @@ def chunk_keys(start, size, shape, chunks):
 @lru_cache(maxsize=128)
 def _chunk_separator(root):
     # Metadata is published before chunk requests and stays fixed for this array.
-    return json.loads((root/'.zarray').read_text()).get('dimension_separator','.')
+    return json.loads((root/'.zarray').read_text(encoding='utf-8-sig')).get('dimension_separator','.')
 
 
 def _paths(descriptor, key, session):
