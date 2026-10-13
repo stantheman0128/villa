@@ -478,7 +478,7 @@ def train(config_path):
     base_config_path = config.pop("base_config", None)
     if base_config_path is not None:
         base_path = Path(config_path).parent / base_config_path
-        with base_path.open() as base_config_file:
+        with base_path.open(encoding="utf-8-sig") as base_config_file:
             resolved = json.load(base_config_file)
         model_overrides = config.pop("model", {})
         resolved.update(config)
