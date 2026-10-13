@@ -202,7 +202,7 @@ class ResizeTask(ZarrTask):
         # Try to read from .zattrs
         zattrs_path = Path(zarr_path) / ".zattrs"
         if zattrs_path.exists():
-            with open(zattrs_path) as f:
+            with open(zattrs_path, encoding="utf-8-sig") as f:
                 attrs = json.load(f)
             if "multiscales" in attrs:
                 datasets = attrs["multiscales"][0]["datasets"]
