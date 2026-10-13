@@ -86,11 +86,11 @@ def main(points_path, prefix, checkpoint_path, params_path, grow_seg_bin):
     """
     Run vc_grow_seg_from_seed for a collection of start points grouped by volume.
     """
-    with open(points_path, "rt") as fp:
+    with open(points_path, "rt", encoding="utf-8-sig") as fp:
         volumes = json.load(fp)
 
     params_path = Path(params_path)
-    with open(params_path, "rt") as fp:
+    with open(params_path, "rt", encoding="utf-8-sig") as fp:
         params = json.load(fp)
     socket_path = params.get("neural_socket")
     if not socket_path:
