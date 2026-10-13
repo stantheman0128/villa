@@ -130,7 +130,7 @@ class LocalZarrArray:
         v2_metadata = self.path / '.zarray'
         if v3_metadata.exists():
             self.version = 3
-            with open(v3_metadata) as stream:
+            with open(v3_metadata, encoding="utf-8-sig") as stream:
                 metadata = json.load(stream)
             if metadata.get('node_type') != 'array':
                 raise click.UsageError(f'{self.path} is a Zarr group, not an array')
@@ -157,7 +157,7 @@ class LocalZarrArray:
             self.filters = []
         elif v2_metadata.exists():
             self.version = 2
-            with open(v2_metadata) as stream:
+            with open(v2_metadata, encoding="utf-8-sig") as stream:
                 metadata = json.load(stream)
             self.shape = tuple(map(int, metadata['shape']))
             self.chunks = tuple(map(int, metadata['chunks']))
