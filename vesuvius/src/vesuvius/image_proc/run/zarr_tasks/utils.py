@@ -310,7 +310,7 @@ def update_compressor_metadata(zarr_path: str, compressor) -> None:
         compressor: Compressor instance
     """
     zarray_path = Path(zarr_path) / ".zarray"
-    with open(zarray_path, "r") as f:
+    with open(zarray_path, "r", encoding="utf-8-sig") as f:
         metadata = json.load(f)
     metadata["compressor"] = compressor.get_config()
     with open(zarray_path, "w") as f:
