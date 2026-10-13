@@ -183,7 +183,7 @@ class SpatialPatchGrid:
             else:
                 if not os.path.exists(cache_path):
                     return None
-                with open(cache_path, 'r') as f:
+                with open(cache_path, 'r', encoding="utf-8-sig") as f:
                     cache_data = json.load(f)
             return {int(k): v for k, v in cache_data.items()}
         except Exception as e:
