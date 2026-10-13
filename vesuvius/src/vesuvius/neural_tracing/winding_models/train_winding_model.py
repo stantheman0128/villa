@@ -473,7 +473,7 @@ def initialize_datasets(accelerator, config, *, build_validation=True):
 def train(config_path):
     """Train a winding phase + crossing model."""
 
-    with open(config_path) as config_file:
+    with open(config_path, encoding="utf-8-sig") as config_file:
         config = json.load(config_file)
     base_config_path = config.pop("base_config", None)
     if base_config_path is not None:
