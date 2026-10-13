@@ -1194,7 +1194,7 @@ class Tifxyz:
             disk_cache = {}
             if cache_file.exists():
                 try:
-                    with open(cache_file, "r") as f:
+                    with open(cache_file, "r", encoding="utf-8-sig") as f:
                         disk_cache = json.load(f)
                 except (json.JSONDecodeError, TypeError):
                     disk_cache = {}
