@@ -101,7 +101,7 @@ def checkpoint_model_state_dict(accelerator, model):
 def train(config_path):
     """Train a row/col conditioned trace-ODE model."""
 
-    with open(config_path, 'r') as f:
+    with open(config_path, 'r', encoding="utf-8-sig") as f:
         config = json.load(f)
 
     prepare_rowcol_cond_train_config(config)
