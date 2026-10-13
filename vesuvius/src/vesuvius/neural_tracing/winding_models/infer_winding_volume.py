@@ -249,7 +249,7 @@ def _load_checkpoint_cfg(path):
 def _native_phase_cache_model_cfg(path):
     """Model geometry stored in a lossless headless native-phase cache."""
     metadata_path = Path(path) / "zarr.json"
-    with metadata_path.open() as handle:
+    with metadata_path.open(encoding="utf-8-sig") as handle:
         attrs = json.load(handle).get("attributes", {})
     if attrs.get("artifact_type") != "winding_native_phase_cache":
         raise ValueError(f"not a native winding phase cache: {path}")
