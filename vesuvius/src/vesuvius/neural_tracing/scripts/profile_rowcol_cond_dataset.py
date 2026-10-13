@@ -141,7 +141,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _load_config(config_path: Path, *, disable_force_recompute_patches: bool) -> dict:
-    with config_path.open("r") as f:
+    with config_path.open("r", encoding="utf-8-sig") as f:
         config = json.load(f)
     setdefault_rowcol_cond_dataset_config(config)
     if disable_force_recompute_patches:
