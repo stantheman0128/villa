@@ -688,7 +688,7 @@ class WindingModelDataset(torch.utils.data.Dataset):
             quads=np.load(pack_dir / "quads.npy"),
             block_min=np.load(pack_dir / "block_min.npy"),
             block_max=np.load(pack_dir / "block_max.npy"),
-            names=json.loads((pack_dir / "names.json").read_text()),
+            names=json.loads((pack_dir / "names.json").read_text(encoding="utf-8-sig")),
             **index,
         )
 
