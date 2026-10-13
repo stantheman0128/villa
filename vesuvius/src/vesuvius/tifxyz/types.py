@@ -1157,7 +1157,7 @@ class Tifxyz:
         cache_file = self.path / "patches_cache.json" if self.path else None
         if cache_file and cache_file.exists() and not force_recompute:
             try:
-                with open(cache_file, "r") as f:
+                with open(cache_file, "r", encoding="utf-8-sig") as f:
                     disk_cache = json.load(f)
                 if cache_key in disk_cache:
                     # Convert lists back to tuples
