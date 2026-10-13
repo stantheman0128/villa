@@ -675,6 +675,14 @@ TEST_CASE("ChunkCacheService rejects incompatible duplicate source metadata")
     CHECK_FALSE(concurrency.adaptive);
 }
 
+TEST_CASE("ChunkCacheService starts with adaptive fetch concurrency")
+{
+    auto service = makeService(1024 * 1024, 4, true);
+    const auto concurrency = service->fetchConcurrency();
+    CHECK(concurrency.maxConcurrentReads == 4);
+    CHECK(concurrency.adaptive);
+}
+
 TEST_CASE("ChunkCacheService source acquisition cannot change concurrency")
 {
     auto service = makeService(1024 * 1024, 4);

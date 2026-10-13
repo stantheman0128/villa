@@ -663,7 +663,9 @@ struct ChunkCacheService::Impl {
         std::optional<ChunkRequestScheduler::AdaptiveConcurrency> adaptiveOptions;
         std::optional<ChunkRequestScheduler::AdaptiveState> initialState;
         if (activeFetchAdaptive) {
-            adaptiveOptions.emplace();
+            // Clang 18 reports is_constructible_v as false for this aggregate,
+            // so optional::emplace() does not compile. Pass a value instead.
+            adaptiveOptions.emplace(ChunkRequestScheduler::AdaptiveConcurrency{});
             adaptiveOptions->minimum = std::min<std::size_t>(
                 2, activeFetchWorkers);
             adaptiveOptions->maximum = activeFetchWorkers;
@@ -975,7 +977,9 @@ void ChunkCacheService::configureFetchConcurrency(
 {
     std::optional<ChunkRequestScheduler::AdaptiveConcurrency> adaptiveOptions;
     if (adaptive) {
-        adaptiveOptions.emplace();
+        // Clang 18 reports is_constructible_v as false for this aggregate,
+        // so optional::emplace() does not compile. Pass a value instead.
+        adaptiveOptions.emplace(ChunkRequestScheduler::AdaptiveConcurrency{});
         adaptiveOptions->minimum = std::min<std::size_t>(
             2, maxConcurrentReads);
         adaptiveOptions->maximum = maxConcurrentReads;
