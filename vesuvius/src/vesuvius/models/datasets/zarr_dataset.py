@@ -460,7 +460,7 @@ class ZarrDataset(Dataset):
         mapping_file : Path
             Path to the samples_mapping.json file
         """
-        with open(mapping_file) as f:
+        with open(mapping_file, encoding="utf-8-sig") as f:
             mapping = json.load(f)
 
         # Check for target name mismatch
