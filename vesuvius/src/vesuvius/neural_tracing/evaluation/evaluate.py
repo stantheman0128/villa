@@ -24,7 +24,7 @@ def main(points_path, prefix, checkpoint_paths, steps_per_crop, max_size):
     """
     Run `trace.trace` for a collection of start points grouped by volume.
     """
-    with open(points_path, "rt") as fp:
+    with open(points_path, "rt", encoding="utf-8-sig") as fp:
         volumes = json.load(fp)
 
     for vol_idx, volume in enumerate(volumes):
