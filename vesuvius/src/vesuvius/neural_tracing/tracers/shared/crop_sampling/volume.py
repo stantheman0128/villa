@@ -81,7 +81,7 @@ class ChunkedArray:
 
     def __init__(self, path: str | Path, cache_bytes: int = 2 << 30) -> None:
         self.path = str(path)
-        meta = json.loads(Path(self.path, ".zarray").read_text())
+        meta = json.loads(Path(self.path, ".zarray").read_text(encoding="utf-8-sig"))
         self.shape = tuple(int(v) for v in meta["shape"])
         self.chunks = tuple(int(v) for v in meta["chunks"])
         self.dtype = np.dtype(meta["dtype"])
