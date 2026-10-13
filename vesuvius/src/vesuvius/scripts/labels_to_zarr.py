@@ -267,7 +267,7 @@ def read_3d_ink_params(tifxyz_dir: Path) -> dict:
     """
     params_file = tifxyz_dir / "3d_ink_params.json"
     if params_file.exists():
-        with open(params_file, "r") as f:
+        with open(params_file, "r", encoding="utf-8-sig") as f:
             return json.load(f)
     return {}
 
