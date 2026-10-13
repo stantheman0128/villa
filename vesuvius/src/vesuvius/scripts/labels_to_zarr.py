@@ -303,7 +303,7 @@ def load_and_validate_remap(
     ValueError
         If validation fails (missing mappings, invalid padded_labels, etc.)
     """
-    with open(remap_path, "r") as f:
+    with open(remap_path, "r", encoding="utf-8-sig") as f:
         raw_data = json.load(f)
 
     # Detect format
