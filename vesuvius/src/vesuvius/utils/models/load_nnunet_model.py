@@ -10,7 +10,7 @@ import tempfile
 
 def load_json(file_path: str) -> dict:
     """Load a JSON file and return its contents."""
-    with open(file_path, 'r') as f:
+    with open(file_path, 'r', encoding='utf-8-sig') as f:
         return json.load(f)
 import shutil
 
