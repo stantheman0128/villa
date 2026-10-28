@@ -334,15 +334,66 @@ def lasagna_flatten(concat_path, flat_path, lasagna_dir, lasagna_config, lasagna
     return flat_abs
 
 
+# Pixels per block for the blockwise steps below, which keeps their temporary copies small
+# next to the strip.
+BLOCK_PIXELS = 1 << 22
+
+
 def max_composite(tif_paths):
+    """Max-composite the slice TIFFs, folding each slice in by row bands and in place, so
+    memory holds the composite and one decoded slice. np.asarray of a whole slice would copy
+    it (Pillow's tobytes), and np.maximum without out= would allocate another full array."""
     composite = None
-    for tif_path in tif_paths:
-        layer = np.asarray(Image.open(tif_path))
-        if composite is None:
-            composite = layer
-        else:
-            composite = np.maximum(composite, layer)
+    for i, tif_path in enumerate(tif_paths):
+        with Image.open(tif_path) as im:
+            im.load()
+            if i == 0:
+                first = (im.mode, im.size)
+            elif (im.mode, im.size) != first:
+                raise ValueError(f'{tif_path} is {(im.mode, im.size)}, the first slice {first}')
+            width, height = im.size
+            rows = max(1, BLOCK_PIXELS // width)
+            for y0 in range(0, height, rows):
+                band = np.asarray(im.crop((0, y0, width, min(height, y0 + rows))))
+                if composite is None:
+                    composite = np.empty((height,) + band.shape[1:], band.dtype)
+                out = composite[y0:y0 + rows]
+                if i == 0:
+                    out[...] = band
+                else:
+                    np.maximum(out, band, out=out)
     return composite
+
+
+def scale_to_uint8(comp):
+    """Scale a composite to 8 bits with its 95th percentile at 255, clipping above.
+
+    Returns (strip8, p95) with the same pixels and p95 as
+    ``np.clip(comp.astype(np.float32) / p95, 0, 1) * 255`` cast to uint8. For uint8/uint16
+    composites (what vc_render_tifxyz writes) that expression is applied to each possible
+    value once and the strip is looked up in the result, so no full-size float copy of the
+    strip is made."""
+    if comp.dtype.kind != 'u' or comp.dtype.itemsize > 2:
+        strip = comp.astype(np.float32)
+        p95 = np.percentile(strip, 95)
+        strip = np.clip(strip / p95, 0, 1) * 255 if p95 > 0 else strip
+        return strip.astype(np.uint8), p95
+    # The percentile interpolates between the 'lower' and 'higher' order statistics. When
+    # they are equal, as they nearly always are in a large integer strip, the float32
+    # percentile is exactly that value; otherwise compute it on a float32 copy of the strip.
+    lower = np.percentile(comp, 95, method='lower')
+    if lower == np.percentile(comp, 95, method='higher'):
+        p95 = np.float32(lower)
+    else:
+        p95 = np.percentile(comp.astype(np.float32), 95, overwrite_input=True)
+    lut = np.arange(np.iinfo(comp.dtype).max + 1, dtype=np.float32)
+    lut = (np.clip(lut / p95, 0, 1) * 255 if p95 > 0 else lut).astype(np.uint8)
+    strip8 = np.empty(comp.shape, dtype=np.uint8)
+    # np.take makes an intp copy of its indices, so look the strip up a block at a time.
+    src, dst = comp.reshape(-1), strip8.reshape(-1)
+    for i in range(0, src.size, BLOCK_PIXELS):
+        np.take(lut, src[i:i + BLOCK_PIXELS], out=dst[i:i + BLOCK_PIXELS])
+    return strip8, p95
 
 
 def strip_jpg_paths(collect_dir, name):
@@ -407,6 +458,36 @@ def publish_render_tifs(per_mesh_ink, tif_paths):
         shutil.move(tif_path, os.path.join(per_mesh_ink, os.path.basename(tif_path)))
 
 
+# vc_render_tifxyz's own --cache-gb default.
+RENDER_CACHE_GB_MAX = 16
+
+
+def usable_memory_bytes():
+    """Memory this process can use: the machine's RAM, or a lower cgroup limit (a container),
+    as vc_render_tifxyz checks it. None when unknown (e.g. on Windows)."""
+    try:
+        usable = os.sysconf('SC_PHYS_PAGES') * os.sysconf('SC_PAGE_SIZE')
+    except (AttributeError, ValueError, OSError):
+        return None
+    for path in ('/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes'):
+        try:
+            with open(path) as f:
+                usable = min(usable, int(f.read()))
+        except (OSError, ValueError):
+            pass  # no such file, or "max" (no limit)
+    return usable
+
+
+def default_cache_gb(num_processes):
+    """--cache-gb for each of num_processes concurrent renders: half the usable memory split
+    between them, from 1 GB up to the renderer's own default. None when memory is unknown."""
+    usable = usable_memory_bytes()
+    if usable is None:
+        return None
+    per_render = usable // (2 * max(1, num_processes) * 1024 ** 3)
+    return max(1, min(RENDER_CACHE_GB_MAX, per_render))
+
+
 @click.command(help=__doc__)
 @click.argument('meshes_dir', type=click.Path(exists=True, file_okay=False))
 @click.option('--volume', required=True, help='Ink volume zarr path, or a remote OME-Zarr URL that vc_render_tifxyz streams')
@@ -415,6 +496,7 @@ def publish_render_tifs(per_mesh_ink, tif_paths):
 @click.option('--scale', type=float, default=0.25, show_default=True)
 @click.option('--scale-segmentation', type=float, default=1.0, show_default=True, help='Passed through to vc_render_tifxyz as --scale-segmentation: multiply mesh coordinates by this factor before sampling, for meshes traced in a different-resolution frame than --volume (e.g. 4 for a mesh in a 4x downsampled frame)')
 @click.option('--group-idx', type=int, default=1, show_default=True)
+@click.option('--cache-gb', type=click.IntRange(min=1), default=None, help='Passed through to vc_render_tifxyz as --cache-gb: its zarr chunk cache in GB, held by each concurrent render (--num-processes). Default: half the memory this machine (or its cgroup limit) allows, split across the concurrent renders, at most 16 (the renderer\'s own default)')
 @click.option('--num-slices', type=int, default=5, show_default=True)
 @click.option('--num-processes', '-j', type=int, default=1, show_default=True, help='Number of meshes to render (and flatten) concurrently')
 @click.option('--flatten/--no-flatten', default=True, show_default=True, help='SLIM-flatten each concatenated mesh before rendering')
@@ -441,7 +523,7 @@ def publish_render_tifs(per_mesh_ink, tif_paths):
 @click.option('--lasagna-config', default='', help='Base lasagna flatten config json. Default: <lasagna-dir>/configs/flatten_fast_nofilter.json')
 @click.option('--lasagna-fit-script', default='', help='Lasagna fit entrypoint run for the full-scroll flatten. Default: _run_flatten_threaded.py if present, else fit.py')
 @click.option('--lasagna-device', default='cuda', show_default=True, help='--device passed to the lasagna flattener for the full-scroll flatten')
-def main(meshes_dir, volume, remote_url, vc_render_bin, scale, scale_segmentation, group_idx, num_slices, num_processes,
+def main(meshes_dir, volume, remote_url, vc_render_bin, scale, scale_segmentation, group_idx, cache_gb, num_slices, num_processes,
          flatten, flatboi_bin, tifxyz2obj_bin, obj2tifxyz_bin, uv_lift_bin, flatten_keep,
          flatten_iters, flatten_energy, flatten_tol, flatten_inpaint, pre_erode,
          keep_largest, flatboi_threads,
@@ -600,6 +682,9 @@ def main(meshes_dir, volume, remote_url, vc_render_bin, scale, scale_segmentatio
             full_items.append((flat_name, flat_path))
 
     render_items = chunks + full_items
+    # Each concurrent render holds its own chunk cache, so size it to the machine unless given.
+    if cache_gb is None:
+        cache_gb = default_cache_gb(min(num_processes, len(render_items)))
 
     # Render ink from each (flattened, if enabled) mesh and max-composite it into a strip jpg.
     def render(name, concat_path):
@@ -620,6 +705,8 @@ def main(meshes_dir, volume, remote_url, vc_render_bin, scale, scale_segmentatio
             ]
             if scale_segmentation != 1.0:
                 render_cmd += ['--scale-segmentation', str(scale_segmentation)]
+            if cache_gb is not None:
+                render_cmd += ['--cache-gb', str(cache_gb)]
             if remote_url:
                 render_cmd += ['--remote-url', remote_url]
             subprocess.run(render_cmd, check=True)
@@ -633,8 +720,11 @@ def main(meshes_dir, volume, remote_url, vc_render_bin, scale, scale_segmentatio
     with ThreadPoolExecutor(max_workers=max(1, num_processes)) as pool:
         futures = {pool.submit(render, name, cp): name for name, cp in render_items}
         for n, future in enumerate(as_completed(futures)):
-            name = futures[future]
+            # A future keeps its result alive: drop it so each composite can be freed once
+            # its strip is written, instead of all of them staying in memory until the end.
+            name = futures.pop(future)
             comp = future.result()
+            del future
             if comp is None:
                 remove_strip_jpgs(collect_dir, name)
                 print(f'[{n + 1}/{len(render_items)}] {name}: WARNING no tifs produced, skipping')
@@ -651,10 +741,8 @@ def main(meshes_dir, volume, remote_url, vc_render_bin, scale, scale_segmentatio
                     # current output. Remove it rather than leave a stale success artifact.
                     remove_strip_jpgs(collect_dir, name)
                     continue
-            strip = comp.astype(np.float32)
-            p95 = np.percentile(strip, 95)
-            strip = np.clip(strip / p95, 0, 1) * 255 if p95 > 0 else strip
-            strip8 = strip.astype(np.uint8)
+            strip8, p95 = scale_to_uint8(comp)
+            del comp
             # Stage all JPGs before replacing old outputs. This keeps the last usable
             # strip if image encoding fails midway through writing a tiled result.
             width = write_strip_jpgs(strip8, name, collect_dir, max_strip_width)
