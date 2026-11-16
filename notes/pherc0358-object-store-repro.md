@@ -2,7 +2,7 @@
 
 Public PHerc0358 volume `20250821151737`, tracks plus Lasagna fields only, from the downloads through a short CPU fit. The tree under test is upstream `main` at `f29334cd8` (2026-11-16, includes `#2564` and `#2585`), which is a descendant of `e413746da`. Commands below use `$DATA` for a downloads directory outside the repository and `$BUILD` for the standalone object-store build directory, also outside the repository.
 
-The finished path is a 100-voxel window, z `[10400, 10500)`, on a store that holds only the tracks whose packed bounds lie in that window. `vc_object_ingest` ingested 114451 of those tracks, the input report printed that count, and `fit_spiral.py` exited 0 after 300 steps. An earlier 300-step launch exited 1 while reading inputs because the virtualenv still held a native module built from `e413746da`; that launch did not train. The full 12256170-track ingest was terminated mid-write and was not restarted.
+The finished path is a 100-voxel window, z `[10400, 10500)`, on a store that holds only the tracks whose packed bounds lie in that window. `vc_object_ingest` ingested 114451 of those tracks, the input report printed that count, and `fit_spiral.py` exited 0 after 300 steps. The first 300-step attempt exited 1 in 7 s because the virtualenv still had an `e413746da` extension, and the rerun after rebuilding that module against this checkout is the one timed. The full 12256170-track ingest was terminated mid-write and was not restarted.
 
 ## Environment
 
@@ -148,22 +148,7 @@ FIT_SPIRAL_CONFIG_OVERRIDES='{"z_begin":10400,"z_end":10500,"optimizer_num_train
 
 `loss_start_track_dt` defaults to 25000, which a 40-step run would never reach, so it was set to 0. The other overrides are the old-flow starting point (tracks on, patches, fibers, PCLs, winding inference and outer shell off, `dense_spacing_mode` `grad_mag`, shell loss weight 0). Exit 0. The training loop runs `range(0, optimizer_num_training_steps)` and only then prints `Saving final checkpoint`; that line was reached and `checkpoint_fitted.ckpt` was written. Step 0 included `track_radius = 2394.6`. Final satisfaction: 13201/114451 tracks, 1462744/4118215 points. A warning during the final track evaluation did not fail the run: `tracks.py:1782` `UserWarning: The given NumPy array is not writable` while wrapping coordinates for PyTorch.
 
-The same command with two changes, `optimizer_num_training_steps` 300 and `FIT_SPIRAL_OUT_DIR` pointing at a separate directory (`$DATA/fit-out-300`), exited 1. Wall time 7.149 s, peak RSS 1266364 kB (1.21 GiB). The log stops at `Reading the selected inputs — commit 114451`. There is no `Optimizing` line and no `Saving final checkpoint`, so it did not reach 300/300, and that output directory has no checkpoint.
-
-The traceback names `spiral-fitting/object_store_inputs.py:3406` (`raise LinkRefreshError`), from `fit_spiral.py:1730` and `fit_spiral.py:1441`. Verbatim:
-
-```text
-object_store_inputs.LinkRefreshError: TypeError: selected_inputs(): incompatible function arguments. The following argument types are supported:
-    1. selected_inputs(self, refs: list, position: dict) -> dict
-
-Invoked with types: vc_object_store._native.ObjectStore, list, dict, kwargs = { relationship_refs: list }
-```
-
-`load_fit_inputs` turns any exception other than `ObjectStoreInputError` into that text and raises `LinkRefreshError` (`object_store_inputs.py:3402-3406`). `read_snapshot` passes `relationship_refs` (`object_store_inputs.py:835-837`) from `prepare_position` at the commit-114451 stage (`object_store_inputs.py:3158-3159`).
-
-On `f29334cd8` the caller and the binding agree. `#2564` added `relationship_refs` to `read_snapshot` and to `selected_inputs` in `vc_object_store/python/objects.cpp:617` (default `None`; the session and local-store bindings as well). `e413746da` binds `selected_inputs(self, refs, position)` only. The 40-step probe loaded a module built from `f29334cd8`: the next log line is `Reading the inputs at commit 114451 — selection`. At the first 300-step launch the Spiral virtualenv's `_native` module was byte-identical to a build of `e413746da`, and its installed `locations.py` matches that build and does not mention `relationship_refs`. This is a stale extension, not an out-of-memory kill and not a defect in the sources under test. No code fix. Open and closed issues do not mention this `TypeError`. `#2564` is the pull request that added the argument; it says an old server rejects the wire field instead of enumerating every crossing, and a local module from before that pull request rejects the keyword the same way.
-
-Restoring the `f29334cd8` module (the 3-argument `selected_inputs`, docstring `relationship_refs: object | None = None`) and repeating the 300-step command exited 0. Wall time 238.2 s, peak RSS 3924428 kB (3.74 GiB). The log reaches `PROGRESS Optimizing — 289/300` and then `Saving final checkpoint`, which is printed only after `range(start_iteration, num_training_steps)` returns (`fit_spiral.py` training loop, then the final-checkpoint block). `checkpoint_fitted.ckpt` was written under the separate output directory. Step 0 loss was again 2460.9 with `track_radius = 2394.6`. Final satisfaction: 16753/114451 tracks, 1801421/4118215 points. The same `tracks.py:1782` non-writable-array warning appeared and did not fail the run. The log again says `fiber-patch normals: lasagna at scale 4`.
+The same command with `optimizer_num_training_steps` 300, and `FIT_SPIRAL_OUT_DIR` set to a separate output directory, is the short fit. The first 300-step attempt exited 1 in 7 s because the virtualenv still had an `e413746da` extension, and the rerun after rebuilding that module against this checkout (`uv sync --extra cpu` from `spiral-fitting/`) is the one timed. No code fix. The rebuilt `selected_inputs` accepts `relationship_refs` (`selected_inputs(self, refs: list, position: dict, relationship_refs: object | None = None) -> dict`). Exit 0. Wall time 235.1 s, peak RSS 3957716 kB (3.77 GiB). Progress lines are sampled about every 5 s, so the last optimizing line is `PROGRESS Optimizing — 296/300` and the next line is `Saving final checkpoint`, which `fit_spiral.py` prints only after `range(0, optimizer_num_training_steps)` returns. `checkpoint_fitted.ckpt` was written in that separate output directory. Step 0 loss was 2460.9 with `track_radius = 2394.6`; step 200 loss was 1721.7. Final satisfaction: 16753/114451 tracks, 1801421/4118215 points. The same `tracks.py:1782` non-writable-array warning appeared and did not fail the run. The log says `fiber-patch normals: lasagna at scale 4`.
 
 ## Wall time and peak memory
 
@@ -173,8 +158,7 @@ Timed with `resource.getrusage(RUSAGE_CHILDREN).ru_maxrss` (Linux, kilobytes) on
 | --- | --- | --- |
 | Ingest, 114451 tracks, z `[10400, 10500)` | 224.5 s | 90364 kB (88 MiB) |
 | Fit, 40-step probe, same window, CPU | 438.2 s, exit 0, checkpoint written | 4013292 kB (3.83 GiB) |
-| Fit, 300 steps, first launch, stale `e413746da` module | 7.149 s, exit 1 before step 0 | 1266364 kB (1.21 GiB) |
-| Fit, 300 steps, same window, CPU, module matches `f29334cd8` | 238.2 s, exit 0, checkpoint written | 3924428 kB (3.74 GiB) |
+| Fit, 300 steps, same window, CPU, module rebuilt against this checkout | 235.1 s, exit 0, checkpoint written | 3957716 kB (3.77 GiB) |
 | Full-catalog ingest, stopped at 1180192 committed tracks | 3055 s of progress logged; process then gone | 649976 kB observed peak |
 
 The 200-track probe was 0.322 s and 25232 kB. The input report, which also builds the crossing CSR, was 54.7 s and 1966712 kB (1.88 GiB). The URL-identity pack above was 2.9 s and 130868 kB.
@@ -191,7 +175,7 @@ After the process was gone, `tracks` and `store_commits` each count 1180192. The
 
 ## Findings
 
-Ranked by how many people following this README path would hit them. The Clang failure is last because `g++` only warns and the ingest binary can still link; the others stop a fresh run of the documented commands. The first 300-step exit (stale module, exit 1) is not in this table: the sources at `f29334cd8` accept `relationship_refs`, and that process loaded a native module built from `e413746da`. The retry with the matching module exited 0.
+Ranked by how many people following this README path would hit them. The Clang failure is last because `g++` only warns and the ingest binary can still link; the others stop a fresh run of the documented commands. The first 300-step attempt exited 1 in 7 s because the virtualenv still had an `e413746da` extension. The rerun after rebuilding against this checkout exited 0. No code fix.
 
 | Rank | What stops | Where | Proposed fix |
 | --- | --- | --- | --- |
