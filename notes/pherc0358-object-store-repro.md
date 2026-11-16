@@ -2,7 +2,7 @@
 
 Public PHerc0358 volume `20250821151737`, tracks plus Lasagna fields only, from the downloads through a short CPU fit. The tree under test is upstream `main` at `f29334cd8` (2026-11-16, includes `#2564` and `#2585`), which is a descendant of `e413746da`. Commands below use `$DATA` for a downloads directory outside the repository and `$BUILD` for the standalone object-store build directory, also outside the repository.
 
-The 40-step probe finished. `vc_object_ingest` ingested 114451 tracks, the input report printed that count, and `fit_spiral.py` exited 0 after 40 steps. A later launch with `optimizer_num_training_steps` 300 and a separate output directory exited 1 while reading inputs and did not train.
+The finished path is a 100-voxel window, z `[10400, 10500)`, on a store that holds only the tracks whose packed bounds lie in that window. `vc_object_ingest` ingested 114451 of those tracks, the input report printed that count, and `fit_spiral.py` exited 0 after 300 steps. An earlier 300-step launch exited 1 while reading inputs because the virtualenv still held a native module built from `e413746da`; that launch did not train. The full 12256170-track ingest was terminated mid-write and was not restarted.
 
 ## Environment
 
@@ -122,7 +122,17 @@ lasagna_scale_for -> 4
 "4 base voxels per array voxel, 1 per fit-volume voxel"
 ```
 
-The fit log says `fiber-patch normals: lasagna at scale 4`. `scaledown` 2 with matching shapes is 4 full-resolution voxels per array voxel (`2**scaledown`). That is the same scale the old flow took from the arrays' `.zattrs` (`[4, 4, 4]`). The JSON `scaledown` of 2 is not a disagreement with `lasagna_scale` 4.
+The fit log says `fiber-patch normals: lasagna at scale 4`. `scaledown` 2 with matching shapes is 4 full-resolution voxels per array voxel (`2**scaledown / base_per_volume_voxel`, and `base_per_volume_voxel` is 1 because the fit volume and the manifest `base_shape_zyx` are the same grid). `lasagna_scale_for` in `spiral-fitting/lasagna_source.py` returns that pair `(4, "4 base voxels per array voxel, 1 per fit-volume voxel")`, and `resolve_lasagna_scale` (`fit_session.py`) stores 4. Calling both on this manifest printed that pair. The packer line is `array 2`: group `2` is the OME-Zarr path whose `.zattrs` scale is `[4.0, 4.0, 4.0]`, not a scale of 2.
+
+Documented pack, before the fit, with `--as` set to the open-data manifest URL so the identity is `url-e395b76c07f414b9db3512fcdee307b2`:
+
+```sh
+python pack_resident_pools.py "$DATA/PHerc0358.lasagna.json" \
+  --as "<open-data PHerc0358.lasagna.json URL>" \
+  --cache "$DATA/spiral-cache" --what normals,grad_mag
+```
+
+Exit 0. Wall time 2.9 s, peak RSS 130868 kB. It packed 6017 normal chunks and 5274 `grad_mag` chunks, and warned that one channel's group directory `2` was missing 743 of 6017 union chunks (the extra z=78 files present only under `nx`); those read back as zero. The fit above did not use that URL identity. Its manifest names the local Lasagna file without `original_url`, so the fitter packed again under `sha256-fefa7e2e…` and still logged scale 4.
 
 Manifest (`schema_version` 1, `volume_uuid` `20250821151737`, voxel size 9.362, base shape as above, sense `ACW`, umbilicus `coordinate_scale` 1, `lasagna.manifest` pointing at the local `PHerc0358.lasagna.json`). Short fit, from `spiral-fitting/`:
 
@@ -151,7 +161,9 @@ Invoked with types: vc_object_store._native.ObjectStore, list, dict, kwargs = { 
 
 `load_fit_inputs` turns any exception other than `ObjectStoreInputError` into that text and raises `LinkRefreshError` (`object_store_inputs.py:3402-3406`). `read_snapshot` passes `relationship_refs` (`object_store_inputs.py:835-837`) from `prepare_position` at the commit-114451 stage (`object_store_inputs.py:3158-3159`).
 
-On `f29334cd8` the caller and the binding agree. `#2564` added `relationship_refs` to `read_snapshot` and to `selected_inputs` in `vc_object_store/python/objects.cpp:617` (default `None`; the session and local-store bindings as well). `e413746da` binds `selected_inputs(self, refs, position)` only. The 40-step probe loaded a module built from `f29334cd8`: the next log line is `Reading the inputs at commit 114451 — selection`. At the 300-step launch the Spiral virtualenv's `_native` module was byte-identical to a build of `e413746da`, and its installed `locations.py` matches that build and does not mention `relationship_refs`. This is a stale extension, not an out-of-memory kill and not a defect in the sources under test. No code fix. Open and closed issues do not mention this `TypeError`. `#2564` is the pull request that added the argument; it says an old server rejects the wire field instead of enumerating every crossing, and a local module from before that pull request rejects the keyword the same way.
+On `f29334cd8` the caller and the binding agree. `#2564` added `relationship_refs` to `read_snapshot` and to `selected_inputs` in `vc_object_store/python/objects.cpp:617` (default `None`; the session and local-store bindings as well). `e413746da` binds `selected_inputs(self, refs, position)` only. The 40-step probe loaded a module built from `f29334cd8`: the next log line is `Reading the inputs at commit 114451 — selection`. At the first 300-step launch the Spiral virtualenv's `_native` module was byte-identical to a build of `e413746da`, and its installed `locations.py` matches that build and does not mention `relationship_refs`. This is a stale extension, not an out-of-memory kill and not a defect in the sources under test. No code fix. Open and closed issues do not mention this `TypeError`. `#2564` is the pull request that added the argument; it says an old server rejects the wire field instead of enumerating every crossing, and a local module from before that pull request rejects the keyword the same way.
+
+Restoring the `f29334cd8` module (the 3-argument `selected_inputs`, docstring `relationship_refs: object | None = None`) and repeating the 300-step command exited 0. Wall time 238.2 s, peak RSS 3924428 kB (3.74 GiB). The log reaches `PROGRESS Optimizing — 289/300` and then `Saving final checkpoint`, which is printed only after `range(start_iteration, num_training_steps)` returns (`fit_spiral.py` training loop, then the final-checkpoint block). `checkpoint_fitted.ckpt` was written under the separate output directory. Step 0 loss was again 2460.9 with `track_radius = 2394.6`. Final satisfaction: 16753/114451 tracks, 1801421/4118215 points. The same `tracks.py:1782` non-writable-array warning appeared and did not fail the run. The log again says `fiber-patch normals: lasagna at scale 4`.
 
 ## Wall time and peak memory
 
@@ -161,13 +173,25 @@ Timed with `resource.getrusage(RUSAGE_CHILDREN).ru_maxrss` (Linux, kilobytes) on
 | --- | --- | --- |
 | Ingest, 114451 tracks, z `[10400, 10500)` | 224.5 s | 90364 kB (88 MiB) |
 | Fit, 40-step probe, same window, CPU | 438.2 s, exit 0, checkpoint written | 4013292 kB (3.83 GiB) |
-| Fit, 300 steps, same window, CPU | 7.149 s, exit 1 before step 0 | 1266364 kB (1.21 GiB) |
+| Fit, 300 steps, first launch, stale `e413746da` module | 7.149 s, exit 1 before step 0 | 1266364 kB (1.21 GiB) |
+| Fit, 300 steps, same window, CPU, module matches `f29334cd8` | 238.2 s, exit 0, checkpoint written | 3924428 kB (3.74 GiB) |
+| Full-catalog ingest, stopped at 1180192 committed tracks | 3055 s of progress logged; process then gone | 649976 kB observed peak |
 
-The 200-track probe was 0.322 s and 25232 kB. The input report, which also builds the crossing CSR, was 54.7 s and 1966712 kB (1.88 GiB).
+The 200-track probe was 0.322 s and 25232 kB. The input report, which also builds the crossing CSR, was 54.7 s and 1966712 kB (1.88 GiB). The URL-identity pack above was 2.9 s and 130868 kB.
+
+## Full-catalog ingest, stopped
+
+A second ingest, of the whole packed directory (12256170 tracks) into `$DATA/scroll.vcobj`, was running beside the window store. It was terminated: the ingest process and its wrapper were gone, and the log has no `INGEST_EXIT` line. The last progress line is:
+
+```text
+Ingest track: ingesting tracks [##----------------------] 9.6% 1180113/12256170 ETA 28672s elapsed 3055s — 889058235617
+```
+
+After the process was gone, `tracks` and `store_commits` each count 1180192. The store file is 6685097984 bytes, with a WAL still beside it. The highest RSS sampled while it ran was 649976 kB. `vc_object_ingest --help` has no resume switch (surfaces and tracks commit individually, and a repeated import of an existing identity is an error). The database was mid-write, so this ingest was not started over. The 100-voxel window inside z 10000-11000 that was actually fit is `[10400, 10500)` on the finished window store. The preferred `[10240, 10340)` window sits in scale-4 chunk row 80 (`z // (32 * 4)` with `.zarray` chunks 32 and `.zattrs` scale 4.0) and was not read from the partial full store.
 
 ## Findings
 
-Ranked by how many people following this README path would hit them. The Clang failure is last because `g++` only warns and the ingest binary can still link; the others stop a fresh run of the documented commands. The 300-step exit above is not in this table: the sources at `f29334cd8` accept `relationship_refs`, and that process loaded a native module built from `e413746da`.
+Ranked by how many people following this README path would hit them. The Clang failure is last because `g++` only warns and the ingest binary can still link; the others stop a fresh run of the documented commands. The first 300-step exit (stale module, exit 1) is not in this table: the sources at `f29334cd8` accept `relationship_refs`, and that process loaded a native module built from `e413746da`. The retry with the matching module exited 0.
 
 | Rank | What stops | Where | Proposed fix |
 | --- | --- | --- | --- |
