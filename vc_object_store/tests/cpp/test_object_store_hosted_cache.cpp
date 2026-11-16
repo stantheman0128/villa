@@ -602,7 +602,7 @@ void boundedPayloadUploads()
         for (int i = 0; i < count; ++i) {
             const auto uuid = util::newUuid();
             ObjectRecord record; record.uuid = uuid; record.kind = "track";
-            vc::geometry::Track track; track.points = {{double(seed), double(i), 1}, {double(seed), double(i), 2}};
+            vc::geometry::Track track; track.points = {{seed, i, 1}, {seed, i, 2}};
             request.expectedObjects[uuid] = std::nullopt;
             request.operations.push_back(CreateObjectOp{objectRecordJson(record)});
             request.operations.push_back(PutGeometryOp{uuid, vc::geometry::encode(track), {}});
@@ -634,7 +634,7 @@ void batchedGeometryPrefetch()
         for (int i = 0; i < 3; ++i) {
             ObjectRecord object; object.kind = "track";
             const auto uuid = store.upsertObject(txn, object);
-            vc::geometry::Track track; track.points = {{double(i), 1, 2}, {double(i), 3, 4}, {double(i), 5, 6}};
+            vc::geometry::Track track; track.points = {{i, 1, 2}, {i, 3, 4}, {i, 5, 6}};
             store.putGeometry(txn, uuid, vc::geometry::encode(track));
             uuids.push_back(uuid);
         }
